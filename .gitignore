@@ -24,3 +24,13 @@ data/
 outputs/
 results/
 EOF
+# macOS
+**/.DS_Store
+**/._*
+Icon?
+
+# .NET
+**/bin/
+**/obj/
+**/*.user
+**/*.swp
