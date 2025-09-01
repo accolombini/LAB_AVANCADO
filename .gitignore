@@ -1,1 +1,26 @@
-/Documentos
+# regras úteis p/ macOS, VSCode, Node, .NET, Python, Arduino
+cat >> .gitignore <<'EOF'
+**/.DS_Store
+**/._*
+Icon?
+.vscode/
+.idea/
+ui/node_modules/
+ui/.next/
+ui/dist/
+ui/build/
+**/bin/
+**/obj/
+**/*.user
+**/*.swp
+**/__pycache__/
+**/*.py[cod]
+.venv/
+venv/
+**/.pio/
+**/.arduino*
+**/build/
+data/
+outputs/
+results/
+EOF
