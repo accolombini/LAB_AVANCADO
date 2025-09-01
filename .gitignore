@@ -1,36 +1,48 @@
 # regras úteis p/ macOS, VSCode, Node, .NET, Python, Arduino
-cat >> .gitignore <<'EOF'
-**/.DS_Store
-**/._*
+# sobrescrever .gitignore com uma versão consolidada
+cat > .gitignore <<'EOF'
+# macOS / iCloud
+.DS_Store
+._*
 Icon?
+*.icloud
+
+# IDEs
 .vscode/
 .idea/
-ui/node_modules/
-ui/.next/
-ui/dist/
-ui/build/
+.vs/
+
+# .NET / C#
 **/bin/
 **/obj/
-**/*.user
-**/*.swp
-**/__pycache__/
-**/*.py[cod]
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+# Python (sim/)
+__pycache__/
+*.py[cod]
 .venv/
 venv/
-**/.pio/
-**/.arduino*
-**/build/
+
+# Arduino / PlatformIO
+.pio/
+.arduino*/
+build/
+
+# Node (se vier a existir um front web)
+ui/node_modules/
+ui/dist/
+ui/build/
+ui/.next/
+
+# Dados e saídas grandes
 data/
 outputs/
 results/
 EOF
-# macOS
-**/.DS_Store
-**/._*
-Icon?
-
-# .NET
-**/bin/
-**/obj/
-**/*.user
-**/*.swp
