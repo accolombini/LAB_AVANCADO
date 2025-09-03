@@ -1,1 +1,69 @@
-/Documentos
+###############################################################################
+# macOS
+###############################################################################
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+###############################################################################
+# Logs genéricos
+###############################################################################
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.pid
+*.seed
+*.pid.lock
+
+###############################################################################
+# VS Code
+# (Ignora tudo em .vscode por padrão, mas mantém arquivos úteis na raiz)
+###############################################################################
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+# se você quiser versionar os launch/tasks da raiz, deixe as linhas acima;
+# em subpastas (ex.: PlatformIO) tudo de .vscode continua ignorado.
+
+###############################################################################
+# .NET (api/ e ui/)
+###############################################################################
+**/bin/
+**/obj/
+**/TestResults/
+*.user
+*.suo
+
+###############################################################################
+# PlatformIO / Arduino (firmware/)
+###############################################################################
+firmware/FornoLab_PIO/.pio/
+firmware/FornoLab_PIO/.vscode/
+firmware/FornoLab_PIO/.clang_complete
+firmware/FornoLab_PIO/.gcc-flags.json
+
+###############################################################################
+# (Opcional) Node/Front (se aparecer no futuro)
+###############################################################################
+**/node_modules/
+**/dist/
+**/.vite/
+**/.parcel-cache/
+
+###############################################################################
+# FORNO_INDUSITRIAL/sim --> não sera usada por hora
+###############################################################################
+/sim/
+
+###############################################################################
+# Documentos locais não versionar
+###############################################################################
+/Documentos/
+
