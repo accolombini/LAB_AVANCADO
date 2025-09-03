@@ -1,0 +1,24 @@
+{
+  "folders": [
+    { "name": "Forno Industrial (repo)", "path": "." },
+    { "name": "Firmware (PIO)", "path": "firmware/FornoLab_PIO" }
+  ],
+  "settings": {
+    // PIO: usar a pasta de firmware dentro do repo
+    "platformio-ide.workspaceDir": "${workspaceFolder:Forno Industrial (repo)}/firmware",
+
+    // Terminal abre sempre na raiz do repo
+    "terminal.integrated.cwd": "${workspaceFolder:Forno Industrial (repo)}",
+
+    // Evitar surpresas durante aula
+    "extensions.autoCheckUpdates": false,
+    "extensions.autoUpdate": false
+  },
+  "extensions": {
+    "recommendations": [
+      "platformio.platformio-ide",
+      "ms-vscode.cpptools",
+      "ms-dotnettools.csharp"
+    ]
+  }
+}
