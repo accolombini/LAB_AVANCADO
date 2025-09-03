@@ -1,8 +1,15 @@
 @page "/"
+@using System.Net.Http.Json
 @inject HttpClient Http
+
 <h1>SCADA – Forno Industrial</h1>
-@if (data is null) { <p>Carregando telemetria…</p> }
-else {
+
+@if (data is null)
+{
+    <p>Carregando telemetria…</p>
+}
+else
+{
     <div class="grid">
         <div>
             <h3>Processo</h3>
@@ -19,30 +26,6 @@ else {
             <p>Fan PWM: @data.Fan</p>
         </div>
     </div>
-    <h3>Comandos</h3>
-    <button @onclick="() => Send("START;")">Start</button>
-    <button @onclick="() => Send("STOP;")">Stop</button>
-    <button @onclick="() => Send("RST_ESTOP;")">Reset E-Stop</button>
-    <button @onclick="() => Send("MODE=AUTO;")">Auto</button>
-    <button @onclick="() => Send("MODE=MAN;")">Manual</button>
-    <div>
-        <label>Setpoint:</label>
-        <input type="number" @bind="sp" step="0.1" />
-        <button @onclick="SetSp">Aplicar</button>
-    </div>
-    <div>
-        <label>Limites (min, max, crit):</label>
-        <input type="number" @bind="lmin" step="0.1" />
-        <input type="number" @bind="lmax" step="0.1" />
-        <input type="number" @bind="lcrit" step="0.1" />
-        <button @onclick="SetLims">Aplicar</button>
-    </div>
-    <div>
-        <label>Manual PWM (heater, fan):</label>
-        <input type="number" @bind="manH" min="0" max="255" />
-        <input type="number" @bind="manF" min="0" max="255" />
-        <button @onclick="SetMan">Aplicar</button>
-    </div>
 
     <h3>Tendência (últimos 60s)</h3>
     <svg width="800" height="220" style="border:1px solid #ccc; background:#fafafa">
@@ -52,41 +35,99 @@ else {
         <text x="45" y="20"> @($"{MinY:F1}°C") </text>
         <text x="45" y="200"> @($"{MaxY:F1}°C") </text>
     </svg>
-    
+
+    <h3>Comandos</h3>
+    <button @onclick='() => Send("START;")'>Start</button>
+    <button @onclick='() => Send("STOP;")'>Stop</button>
+    <button @onclick='() => Send("RST_ESTOP;")'>Reset E‑Stop</button>
+    <button @onclick='() => Send("MODE=AUTO;")'>Auto</button>
+    <button @onclick='() => Send("MODE=MAN;")'>Manual</button>
+
+    <div>
+        <label>Setpoint:</label>
+        <input type="number" @bind="sp" step="0.1" />
+        <button @onclick="SetSp">Aplicar</button>
+    </div>
+
+    <div>
+        <label>Limites (min, max, crit):</label>
+        <input type="number" @bind="lmin" step="0.1" />
+        <input type="number" @bind="lmax" step="0.1" />
+        <input type="number" @bind="lcrit" step="0.1" />
+        <button @onclick="SetLims">Aplicar</button>
+    </div>
+
+    <div>
+        <label>Manual PWM (heater, fan):</label>
+        <input type="number" @bind="manH" min="0" max="255" />
+        <input type="number" @bind="manF" min="0" max="255" />
+        <button @onclick="SetMan">Aplicar</button>
+    </div>
+
+    <hr />
+    <footer>
+        <small>
+            <b>Último comando:</b> @last?.command ?? "-" |
+            <b>Resposta:</b> @last?.response ?? "-" |
+            <b>Quando (UTC):</b> @(last?.timestampUtc?.ToString("HH:mm:ss") ?? "-")
+        </small>
+    </footer>
 }
+
 @code {
+    private const string API = "http://localhost:5199";
     private Telemetry? data;
     private System.Timers.Timer? timer;
     private double sp=180, lmin=120, lmax=220, lcrit=240; private int manH=0, manF=0;
-    protected override void OnInitialized(){
-        Http.BaseAddress = new Uri("http://localhost:5199");
-        timer = new System.Timers.Timer(500);
-        timer.Elapsed += async (_, __) => { try { data = await Http.GetFromJsonAsync<Telemetry>("/api/telemetry"); if (data is not null) { _series.Add(data.T); if (_series.Count>MaxSamples) _series.RemoveAt(0); } StateHasChanged(); } catch { } };
-        timer.Start();
-    }
-    private Task Send(string c) => Http.PostAsJsonAsync("/api/cmd", c);
-    private Task SetSp() => Send($"SET_SP={sp};");
-    private Task SetLims() => Send($"SET_LIMS={lmin},{lmax},{lcrit};");
-    private Task SetMan() => Send($"MAN={manH},{manF};");
-    public record Telemetry(double T,double SP,double LimMin,double LimMax,double LimCrit,string Mode,string State,int Heater,int Fan,string Alarm,bool EStop,long DtEstopUs,long LoopUs,DateTime Timestamp);
+
     private System.Collections.Generic.List<double> _series = new();
     private const int MaxSamples = 120;
     private string PolylinePoints => BuildPolyline();
     private double MinY=0, MaxY=0;
-    private string BuildPolyline(){
-        if(_series.Count==0) return "";
+
+    private LastLog? last;
+
+    protected override void OnInitialized()
+    {
+        Http.BaseAddress = new Uri("http://localhost:5199");
+        timer = new System.Timers.Timer(500);
+        timer.Elapsed += async (_, __) =>
+        {
+            try
+            {
+                data = await Http.GetFromJsonAsync<Telemetry>($"{API}/api/telemetry");
+                if (data is not null) { _series.Add(data.T); if (_series.Count > MaxSamples) _series.RemoveAt(0); }
+                try { last = await Http.GetFromJsonAsync<LastLog>($"{API}/api/last"); } catch { }
+                StateHasChanged();
+            }
+            catch { }
+        };
+        timer.Start();
+    }
+
+    private Task Send(string c) => Http.PostAsJsonAsync($"{API}/api/cmd", c);
+    private Task SetSp() => Send($"SET_SP={sp};");
+    private Task SetLims() => Send($"SET_LIMS={lmin},{lmax},{lcrit};");
+    private Task SetMan() => Send($"MAN={manH},{manF};");
+
+    private string BuildPolyline()
+    {
+        if (_series.Count == 0) return "";
         MinY = _series.Min();
         MaxY = _series.Max();
-        if (System.Math.Abs(MaxY-MinY) < 1e-6) MaxY = MinY + 1;
-        double x0=40,y0=10,w=750,h=200;
-        var sb=new System.Text.StringBuilder();
-        for(int i=0;i<_series.Count;i++){
-            var x=x0 + (i/(double)(MaxSamples-1))*w;
-            var norm=(_series[i]-MinY)/(MaxY-MinY);
-            var y=y0 + (1.0-norm)*h;
+        if (Math.Abs(MaxY - MinY) < 1e-6) MaxY = MinY + 1;
+        double x0=40, y0=10, w=750, h=200;
+        var sb = new System.Text.StringBuilder();
+        for (int i=0;i<_series.Count;i++)
+        {
+            var x = x0 + (i/(double)(MaxSamples-1))*w;
+            var norm = (_series[i]-MinY)/(MaxY-MinY);
+            var y = y0 + (1.0 - norm) * h;
             sb.Append($"{x:F1},{y:F1} ");
         }
         return sb.ToString();
     }
-    
+
+    public record Telemetry(double T,double SP,double LimMin,double LimMax,double LimCrit,string Mode,string State,int Heater,int Fan,string Alarm,bool EStop,long DtEstopUs,long LoopUs,DateTime Timestamp);
+    public record LastLog(string? command, string? response, DateTime? timestampUtc);
 }

@@ -203,6 +203,7 @@ void setup() {
 }
 
 void loop() {
+  const unsigned long EXTRA_DELAY_MS = 50; // DEMO: atraso intencional para latência
   unsigned long t0 = micros();
 
   // Recepção
@@ -240,4 +241,5 @@ void loop() {
   }
 
   g_lastLoopUs = micros() - t0;
+  delay(EXTRA_DELAY_MS);
 }
