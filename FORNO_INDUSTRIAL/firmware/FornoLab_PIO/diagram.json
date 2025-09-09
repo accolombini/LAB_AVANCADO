@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "author": "Forno Industrial",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-arduino-uno", "id": "uno", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-led", "id": "led_macarico", "top": -67.2, "left": 230.4, "attrs": { "color": "red", "label": "MAÇARICO" } },
+    { "type": "wokwi-led", "id": "led_ventilador", "top": -67.2, "left": 278.4, "attrs": { "color": "blue", "label": "VENTILADOR" } },
+    { "type": "wokwi-led", "id": "led_alarme", "top": -67.2, "left": 326.4, "attrs": { "color": "yellow", "label": "ALARME" } }
+  ],
+  "connections": [
+    [ "uno:5", "led_macarico:A", "red", [] ],
+    [ "led_macarico:C", "uno:GND.2", "black", [] ],
+    [ "uno:6", "led_ventilador:A", "blue", [] ],
+    [ "led_ventilador:C", "uno:GND.3", "black", [] ],
+    [ "uno:3", "led_alarme:A", "yellow", [] ],
+    [ "led_alarme:C", "uno:GND.4", "black", [] ]
+  ],
+  "dependencies": {}
+}

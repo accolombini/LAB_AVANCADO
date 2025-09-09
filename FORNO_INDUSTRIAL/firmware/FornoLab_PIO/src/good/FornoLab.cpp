@@ -1,147 +1,202 @@
 #include <Arduino.h>
-#ifndef IRAM_ATTR
-#define IRAM_ATTR
-#endif
 
-// ===== Pinos (UNO) =====
-const uint8_t PIN_HEATER = 5;   // PWM
-const uint8_t PIN_FAN    = 6;   // PWM
-const uint8_t PIN_ESTOP  = 2;   // INT0 (D2)
+// ========== CONFIGURAÇÕES DO FORNO INDUSTRIAL ==========
+const float TEMP_AMBIENTE = 25.0;        // Temperatura ambiente (°C)
+const float TEMP_MINIMA = 1000.0;        // Temperatura mínima de operação (°C)
+const float TEMP_MAXIMA = 1800.0;        // Temperatura máxima de operação (°C)
+const float TEMP_SETPOINT = 1500.0;      // Temperatura de regime (°C)
+const float TEMP_ALARME = 1600.0;        // Temperatura de alarme (°C)
+const float TEMP_CRITICA = 1750.0;       // Temperatura crítica de interrupção (°C)
 
-// ===== Estado de processo =====
-enum Mode { MODE_AUTO, MODE_MAN };
-volatile bool v_eStop = false;
-volatile unsigned long v_tEstopUs = 0;
+// ========== PINOS DE CONTROLE ==========
+const int PIN_MACARICO = 5;              // Pino PWM do maçarico
+const int PIN_VENTILADOR = 6;            // Pino PWM do ventilador
+const int PIN_ALARME = 3;                // Pino do LED de alarme
 
-bool running = false;
-Mode mode = MODE_AUTO;
+// ========== PARÂMETROS DE SIMULAÇÃO TÉRMICA ==========
+const float INCREMENTO_TEMP = 5.0;       // °C por ciclo (didático)
+const float DECREMENTO_TEMP = 8.0;       // °C por ciclo (ventilador)
+const float PERDA_AMBIENTE = 2.0;        // °C por ciclo (perdas naturais)
 
-float T = 180.0f;          // temperatura simulada (°C)
-float SETP = 180.0f;       // <-- era SP (colidia com macro do AVR)
-float LMIN = 120.0f, LMAX = 220.0f, LCRIT = 240.0f;
+// ========== VARIÁVEIS GLOBAIS ==========
+float temperatura_atual = 1400.0;        // Inicia abaixo do setpoint para forçar aquecimento
+bool sistema_ativo = true;
+bool alarme_ativo = false;
+bool interrupcao_critica = false;
+bool macarico_ligado = false;
+bool ventilador_ligado = false;
 
-int pwmHeater = 0;         // 0..255
-int pwmFan    = 0;         // 0..255
-unsigned long dtEstopUs = 0;
-unsigned long loopUs = 0;
-
-char lastState[10] = "IDLE";
-char lastAlarm[10] = "NONE";
-
-// ===== Planta simulada (didática) =====
-static inline void updatePlant(float dtSec) {
-  const float amb = 25.0f;
-  float heat = (pwmHeater / 255.0f) * 6.0f;
-  float cool = (pwmFan    / 255.0f) * 6.0f;
-  T += (heat - cool) * dtSec;
-  T += (amb - T) * 0.03f * dtSec;
-}
-
-// ===== Saídas =====
-static inline void applyOutputs(int h, int f) {
-  pwmHeater = constrain(h, 0, 255);
-  pwmFan    = constrain(f, 0, 255);
-  analogWrite(PIN_HEATER, pwmHeater);
-  analogWrite(PIN_FAN,    pwmFan);
-}
-
-static inline void allOff() { applyOutputs(0, 0); }
-
-// ===== E-STOP ISR =====
-void IRAM_ATTR isrEstop() {
-  v_eStop = true;
-  v_tEstopUs = micros();
-}
-
-// ===== Telemetria =====
-void sendTelemetry() {
-  Serial.print("{\"t\":");        Serial.print(T, 1);
-  Serial.print(",\"sp\":");       Serial.print(SETP, 1);
-  Serial.print(",\"limMin\":");   Serial.print(LMIN, 1);
-  Serial.print(",\"limMax\":");   Serial.print(LMAX, 1);
-  Serial.print(",\"limCrit\":");  Serial.print(LCRIT, 1);
-  Serial.print(",\"mode\":\"");   Serial.print(mode == MODE_AUTO ? "AUTO" : "MAN"); Serial.print("\"");
-  Serial.print(",\"state\":\"");  Serial.print(lastState); Serial.print("\"");
-  Serial.print(",\"heater\":");   Serial.print(pwmHeater);
-  Serial.print(",\"fan\":");      Serial.print(pwmFan);
-  Serial.print(",\"alarm\":\"");  Serial.print(lastAlarm); Serial.print("\"");
-  Serial.print(",\"eStop\":");    Serial.print(v_eStop ? "true" : "false");
-  Serial.print(",\"dtEstopUs\":");Serial.print(dtEstopUs);
-  Serial.print(",\"loopUs\":");   Serial.print(loopUs);
-  Serial.print(",\"tsMs\":");     Serial.print(millis());
-  Serial.println("}");
-}
-
-// ===== Parser simples "CMD;..." =====
-char ibuf[96]; uint8_t ilen = 0;
-void resetInput(){ ilen=0; ibuf[0]=0; }
-bool startsWith(const char* s){ return strncmp(ibuf, s, strlen(s)) == 0; }
-
-void handleCommand() {
-  if (ilen>0 && ibuf[ilen-1]==';') ibuf[ilen-1]=0;
-  if (startsWith("START")) { running = true; Serial.println("ACK;"); }
-  else if (startsWith("STOP")) { running = false; allOff(); Serial.println("ACK;"); }
-  else if (startsWith("RST_ESTOP")) { v_eStop=false; dtEstopUs=0; Serial.println("ACK;"); }
-  else if (startsWith("MODE=AUTO")) { mode = MODE_AUTO; Serial.println("ACK;"); }
-  else if (startsWith("MODE=MAN"))  { mode = MODE_MAN;  Serial.println("ACK;"); }
-  else if (startsWith("SET_SP="))   { SETP = atof(ibuf+7); Serial.println("ACK;"); }
-  else if (startsWith("SET_LIMS=")) { float a,b,c; if (sscanf(ibuf+9,"%f,%f,%f",&a,&b,&c)==3){ LMIN=a; LMAX=b; LCRIT=c; Serial.println("ACK;"); } else Serial.println("ERR;"); }
-  else if (startsWith("MAN="))      { int h,f; if (sscanf(ibuf+4,"%d,%d",&h,&f)==2){ applyOutputs(h,f); Serial.println("ACK;"); } else Serial.println("ERR;"); }
-  else if (startsWith("GET"))       { sendTelemetry(); }
-  else                              { Serial.println("ERR;"); }
-}
-
+// ========== CONFIGURAÇÃO INICIAL ==========
 void setup() {
-  pinMode(PIN_HEATER, OUTPUT);
-  pinMode(PIN_FAN,    OUTPUT);
-  pinMode(PIN_ESTOP,  INPUT_PULLUP);
-  allOff();
   Serial.begin(115200);
-  attachInterrupt(digitalPinToInterrupt(PIN_ESTOP), isrEstop, FALLING);
-  Serial.println("ACK;");
+  
+  // Configurar pinos como saída
+  pinMode(PIN_MACARICO, OUTPUT);
+  pinMode(PIN_VENTILADOR, OUTPUT);
+  pinMode(PIN_ALARME, OUTPUT);
+  
+  // Estado inicial - todos desligados
+  digitalWrite(PIN_MACARICO, LOW);
+  digitalWrite(PIN_VENTILADOR, LOW);
+  digitalWrite(PIN_ALARME, LOW);
+  
+  Serial.println("=== FORNO INDUSTRIAL - MOMENTO 1 ===");
+  Serial.println("Temperatura: 1000-1800C");
+  Serial.println("Regime: 1500C");
+  Serial.println("Alarme: 1600C");
+  Serial.println("Interrupcao: 1750C");
+  Serial.println("Sistema iniciado!");
+  Serial.println();
 }
 
-void loop() {
-  const unsigned long t0 = micros();
-
-  // leitura de linha terminada por ';'
-  while (Serial.available()) {
-    char c = Serial.read();
-    if (ilen < sizeof(ibuf)-1) ibuf[ilen++] = c;
-    if (c == ';') { ibuf[ilen] = 0; handleCommand(); resetInput(); }
+// ========== VERIFICAÇÃO DE TEMPERATURA CRÍTICA ==========
+void verificar_temperatura_critica() {
+  // INTERRUPÇÃO CRÍTICA aos 1750°C (PRIORIDADE MÁXIMA)
+  if (temperatura_atual >= TEMP_CRITICA && !interrupcao_critica) {
+    interrupcao_critica = true;
+    sistema_ativo = false;
+    
+    Serial.println();
+    Serial.println("*** INTERRUPCAO CRITICA! TEMP >= 1750C ***");
+    Serial.println("*** VENTILADORES EM FORCA TOTAL ***");
+    Serial.println();
   }
+  
+  // RESETAR INTERRUPÇÃO quando temperatura voltar ao setpoint
+  if (interrupcao_critica && temperatura_atual <= TEMP_SETPOINT) {
+    interrupcao_critica = false;
+    sistema_ativo = true;
+    alarme_ativo = false; // Reset do alarme também
+    
+    Serial.println();
+    Serial.println("*** SISTEMA REATIVADO - TEMP <= 1500C ***");
+    Serial.println("*** REINICIANDO CICLO DE AQUECIMENTO ***");
+    Serial.println();
+  }
+  
+  // ALARME aos 1600°C (só se não estiver em interrupção)
+  if (!interrupcao_critica && temperatura_atual >= TEMP_ALARME && !alarme_ativo) {
+    alarme_ativo = true;
+    digitalWrite(PIN_ALARME, HIGH);
+    Serial.println("*** ALARME! TEMPERATURA CRITICA >= 1600C ***");
+  }
+  
+  // Desligar alarme se temperatura baixou (e não está em interrupção)
+  if (!interrupcao_critica && temperatura_atual < TEMP_ALARME && alarme_ativo) {
+    alarme_ativo = false;
+    digitalWrite(PIN_ALARME, LOW);
+  }
+  
+  // Manter alarme ligado durante interrupção crítica
+  if (interrupcao_critica) {
+    digitalWrite(PIN_ALARME, HIGH);
+  }
+}
 
-  if (v_eStop) {
-    allOff();
-    dtEstopUs = micros() - v_tEstopUs;
-    strcpy(lastState, "E_STOP");
-  } else if (!running) {
-    allOff();
-    strcpy(lastState, "IDLE");
+// ========== CONTROLE DE TEMPERATURA ==========
+void controlar_temperatura() {
+  // PRIORIDADE 1: Se sistema em interrupção crítica, só ventilador força total
+  if (interrupcao_critica) {
+    macarico_ligado = false;
+    ventilador_ligado = true;
+    digitalWrite(PIN_MACARICO, LOW);
+    digitalWrite(PIN_VENTILADOR, HIGH);
+    return; // Sai da função - nada mais importa
+  }
+  
+  // PRIORIDADE 2: Sistema normal - sempre aquece até atingir 1750°C
+  if (sistema_ativo) {
+    // CONTINUA AQUECENDO até atingir temperatura crítica
+    macarico_ligado = true;
+    ventilador_ligado = false;
+    digitalWrite(PIN_MACARICO, HIGH);
+    digitalWrite(PIN_VENTILADOR, LOW);
   } else {
-    if (mode == MODE_AUTO) {
-      // controle bang-bang bem simples
-      if      (T < SETP - 0.5f) { applyOutputs(200, 0);  strcpy(lastState, "HEAT"); }
-      else if (T > SETP + 0.5f) { applyOutputs(0, 200);  strcpy(lastState, "COOL"); }
-      else                      { applyOutputs(0, 0);    strcpy(lastState, "IDLE"); }
-    } else {
-      strcpy(lastState, "MAN"); // mantém PWM ajustados
+    // Sistema inativo - desligar tudo
+    macarico_ligado = false;
+    ventilador_ligado = false;
+    digitalWrite(PIN_MACARICO, LOW);
+    digitalWrite(PIN_VENTILADOR, LOW);
+  }
+}
+
+// ========== SIMULAÇÃO TÉRMICA ==========
+void simular_temperatura() {
+  // AQUECIMENTO: +5°C quando maçarico ligado
+  if (macarico_ligado) {
+    temperatura_atual += INCREMENTO_TEMP; // +5°C
+    Serial.print(">>> AQUECENDO +5C ");
+  }
+  
+  // RESFRIAMENTO: -8°C quando ventilador ligado
+  if (ventilador_ligado) {
+    temperatura_atual -= DECREMENTO_TEMP; // -8°C
+    Serial.print(">>> RESFRIANDO -8C ");
+  }
+  
+  // PERDAS NATURAIS: sempre perde 1°C (só quando não está aquecendo)
+  if (!macarico_ligado && temperatura_atual > TEMP_AMBIENTE) {
+    temperatura_atual -= 1.0; // Perda natural sempre 1°C
+    if (!ventilador_ligado) {
+      Serial.print(">>> PERDA NATURAL -1C ");
     }
   }
-
-  // alarmes
-  if      (T >= LCRIT) strcpy(lastAlarm, "CRIT");
-  else if (T >  LMAX)  strcpy(lastAlarm, "HIGH");
-  else if (T <  LMIN)  strcpy(lastAlarm, "LOW");
-  else                 strcpy(lastAlarm, "NONE");
-
-  // atualização da planta a cada ~100 ms
-  static unsigned long lastTick = 0;
-  unsigned long now = millis();
-  if (now - lastTick >= 100) {
-    updatePlant((now - lastTick) / 1000.0f);
-    lastTick = now;
+  
+  // LIMITES FÍSICOS
+  if (temperatura_atual < TEMP_AMBIENTE) {
+    temperatura_atual = TEMP_AMBIENTE;
   }
+  if (temperatura_atual > TEMP_MAXIMA) {
+    temperatura_atual = TEMP_MAXIMA;
+  }
+}
 
-  loopUs = micros() - t0;
+// ========== EXIBIR STATUS ==========
+void exibir_status() {
+  Serial.print("TEMP: ");
+  Serial.print(temperatura_atual, 1);
+  Serial.print("C | SP: ");
+  Serial.print(TEMP_SETPOINT, 0);
+  Serial.print("C | ");
+  
+  if (interrupcao_critica) {
+    Serial.print("*** INTERRUPCAO CRITICA ***");
+  } else if (macarico_ligado) {
+    Serial.print("AQUECENDO (+5C)");
+  } else if (ventilador_ligado) {
+    Serial.print("RESFRIANDO (-8C)");
+  } else {
+    Serial.print("MANTENDO (-1C)");
+  }
+  
+  Serial.print(" | M:");
+  Serial.print(macarico_ligado ? "ON" : "OFF");
+  Serial.print(" V:");
+  Serial.print(ventilador_ligado ? "ON" : "OFF");
+  Serial.print(" A:");
+  Serial.print(alarme_ativo ? "ON" : "OFF");
+  
+  if (temperatura_atual >= TEMP_ALARME && temperatura_atual < TEMP_CRITICA) {
+    Serial.print(" *** ALARME ***");
+  }
+  
+  Serial.println();
+}
+
+// ========== LOOP PRINCIPAL ==========
+void loop() {
+  // 1. Verificar temperatura crítica (PRIORIDADE MÁXIMA)
+  verificar_temperatura_critica();
+  
+  // 2. Controlar temperatura (SEMPRE - independente do sistema_ativo)
+  controlar_temperatura();
+  
+  // 3. Simular planta térmica
+  simular_temperatura();
+  
+  // 4. Exibir status
+  exibir_status();
+  
+  // 5. Aguardar próximo ciclo
+  delay(1000); // 1 segundo por ciclo
 }

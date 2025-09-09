@@ -1,48 +1,16 @@
 # regras úteis p/ macOS, VSCode, Node, .NET, Python, Arduino
 # sobrescrever .gitignore com uma versão consolidada
 cat > .gitignore <<'EOF'
-# macOS / iCloud
+# macOS (apenas na raiz)
 .DS_Store
-._*
 Icon?
 *.icloud
 
-# IDEs
+# IDEs (apenas na raiz)
 .vscode/
 .idea/
 .vs/
-
-# .NET / C#
-**/bin/
-**/obj/
-*.user
-*.suo
-*.userosscache
-*.sln.docstates
-TestResults/
-coverage/
-*.coverage
-*.coveragexml
-
-# Python (sim/)
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-
-# Arduino / PlatformIO
-.pio/
-.arduino*/
-build/
-
-# Node (se vier a existir um front web)
-ui/node_modules/
-ui/dist/
-ui/build/
-ui/.next/
-
-# Dados e saídas grandes
-data/
-outputs/
-results/
 EOF
+
+git add .gitignore
+git commit -m "chore: slim root .gitignore; project-specific ignores live in each folder"
