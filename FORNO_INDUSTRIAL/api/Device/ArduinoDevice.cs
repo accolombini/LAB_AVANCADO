@@ -1,90 +1,181 @@
 using System.IO.Ports;
 using System.Text;
+using System.Text.RegularExpressions;
 using Forno.Api.Device;
 
+namespace Forno.Api.Device;
+
+/// <summary>
+/// Comunicação Serial com Arduino do Forno Industrial - MOMENTO 1
+/// Processa saída do terminal: "TEMP: 1500.0C | SP: 1500C | AQUECENDO | M:ON V:OFF A:OFF"
+/// </summary>
 public sealed class ArduinoDevice : IDevice, IDisposable
 {
     private readonly SerialPort _port;
-    private readonly StringBuilder _rx = new();
-    private Telemetry? _last;
+    private readonly StringBuilder _rxBuffer = new();
+    private Telemetry? _lastTelemetry;
+    private bool _isRunning;
 
-    public ArduinoDevice(string portName, int baud = 115200)
+    public event EventHandler<Telemetry>? TelemetryReceived;
+
+    public ArduinoDevice(string portName, int baudRate = 115200)
     {
-        _port = new SerialPort(portName, baud)
+        _port = new SerialPort(portName, baudRate)
         {
             NewLine = "\n",
-            ReadTimeout = 50,
-            WriteTimeout = 50
+            ReadTimeout = 1000,
+            WriteTimeout = 1000,
+            Encoding = Encoding.UTF8
         };
-        _port.DataReceived += OnData;
+        _port.DataReceived += OnSerialDataReceived;
     }
 
-    public Telemetry? LastTelemetry => _last;
+    public Telemetry? LastTelemetry => _lastTelemetry;
 
-    public Task StartAsync(CancellationToken ct = default)
+    public async Task StartAsync(CancellationToken ct = default)
     {
-        if (!_port.IsOpen) _port.Open();
-        return Task.CompletedTask;
+        try
+        {
+            if (!_port.IsOpen)
+            {
+                _port.Open();
+                _isRunning = true;
+                
+                // Aguarda um pouco para estabilizar conexão
+                await Task.Delay(2000, ct);
+                
+                Console.WriteLine($"✅ Conectado ao Arduino na porta {_port.PortName}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Erro ao conectar Arduino: {ex.Message}");
+            throw;
+        }
     }
 
     public Task StopAsync(CancellationToken ct = default)
     {
-        if (_port.IsOpen) _port.Close();
+        try
+        {
+            _isRunning = false;
+            if (_port.IsOpen)
+            {
+                _port.Close();
+                Console.WriteLine("🔌 Desconectado do Arduino");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ Erro ao desconectar: {ex.Message}");
+        }
         return Task.CompletedTask;
     }
 
     public async Task<string> SendAsync(string command, CancellationToken ct = default)
     {
-        if (!_port.IsOpen) _port.Open();
-        await _port.BaseStream.WriteAsync(Encoding.ASCII.GetBytes(command + "\n"), ct);
-        return "OK";
+        try
+        {
+            if (!_port.IsOpen) return "ERRO: Porta não está aberta";
+            
+            await _port.BaseStream.WriteAsync(Encoding.UTF8.GetBytes(command + "\n"), ct);
+            Console.WriteLine($"📤 Comando enviado: {command}");
+            return "OK";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Erro ao enviar comando: {ex.Message}");
+            return $"ERRO: {ex.Message}";
+        }
     }
 
-    private void OnData(object? s, SerialDataReceivedEventArgs e)
+    private void OnSerialDataReceived(object sender, SerialDataReceivedEventArgs e)
     {
         try
         {
-            _rx.Append(_port.ReadExisting());
-            int idx;
-            while ((idx = _rx.ToString().IndexOf('\n')) >= 0)
+            if (!_isRunning) return;
+            
+            string data = _port.ReadExisting();
+            _rxBuffer.Append(data);
+            
+            // Processa linhas completas
+            string buffer = _rxBuffer.ToString();
+            var lines = buffer.Split('\n');
+            
+            // Mantém a última linha incompleta no buffer
+            _rxBuffer.Clear();
+            _rxBuffer.Append(lines[^1]);
+            
+            // Processa linhas completas
+            for (int i = 0; i < lines.Length - 1; i++)
             {
-                var line = _rx.ToString()[..idx].Trim();
-                _rx.Remove(0, idx + 1);
-                if (line.Length > 0) TryParseTelemetry(line);
+                var line = lines[i].Trim();
+                if (!string.IsNullOrEmpty(line))
+                {
+                    TryParseTelemetryLine(line);
+                }
             }
         }
-        catch { /* ignore */ }
-    }
-
-    private void TryParseTelemetry(string line)
-    {
-        var parts = line.Split(';', StringSplitOptions.RemoveEmptyEntries);
-        double t=0, sp=0, lmin=0, lmax=0, lcrit=0; string mode="", state="", alarm="";
-        int heater=0, fan=0; bool estop=false; long dt=0, loop=0;
-        foreach (var p in parts)
+        catch (Exception ex)
         {
-            var kv = p.Split('=');
-            if (kv.Length != 2) continue;
-            var k = kv[0]; var v = kv[1];
-            switch (k)
-            {
-                case "T": double.TryParse(v, out t); break;
-                case "SP": double.TryParse(v, out sp); break;
-                case "LIM_MIN": double.TryParse(v, out lmin); break;
-                case "LIM_MAX": double.TryParse(v, out lmax); break;
-                case "LIM_CRIT": double.TryParse(v, out lcrit); break;
-                case "MODE": mode = v; break;
-                case "STATE": state = v; break;
-                case "HEATER": int.TryParse(v, out heater); break;
-                case "FAN": int.TryParse(v, out fan); break;
-                case "ALARM": alarm = v; break;
-                case "ESTOP": estop = v == "1"; break;
-                case "DT_ESTOP_US": long.TryParse(v, out dt); break;
-                case "LOOP_US": long.TryParse(v, out loop); break;
-            }
+            Console.WriteLine($"⚠️ Erro ao processar dados seriais: {ex.Message}");
         }
-        _last = new Telemetry(t, sp, lmin, lmax, lcrit, mode, state, heater, fan, alarm, estop, dt, loop, DateTime.UtcNow);
     }
 
-    public void Dispose() => _port.Dispose();
+    private void TryParseTelemetryLine(string line)
+    {
+        try
+        {
+            // Padrão: "TEMP: 1500.0C | SP: 1500C | AQUECENDO | M:ON V:OFF A:OFF"
+            var tempMatch = Regex.Match(line, @"TEMP:\s*([\d.]+)C");
+            var spMatch = Regex.Match(line, @"SP:\s*([\d.]+)C");
+            var stateMatch = Regex.Match(line, @"\|\s*([A-Z\s]+)\s*\|");
+            var macaricoMatch = Regex.Match(line, @"M:(ON|OFF)");
+            var ventiladorMatch = Regex.Match(line, @"V:(ON|OFF)");
+            var alarmeMatch = Regex.Match(line, @"A:(ON|OFF)");
+            
+            if (tempMatch.Success && spMatch.Success)
+            {
+                var temperatura = double.Parse(tempMatch.Groups[1].Value);
+                var setpoint = double.Parse(spMatch.Groups[1].Value);
+                var estado = stateMatch.Success ? stateMatch.Groups[1].Value.Trim() : "DESCONHECIDO";
+                var macaricoOn = macaricoMatch.Success && macaricoMatch.Groups[1].Value == "ON";
+                var ventiladorOn = ventiladorMatch.Success && ventiladorMatch.Groups[1].Value == "ON";
+                var alarmeOn = alarmeMatch.Success && alarmeMatch.Groups[1].Value == "ON";
+                
+                // Detecta estados especiais
+                bool interrupcaoCritica = line.Contains("INTERRUPCAO CRITICA");
+                bool sistemaAtivo = !interrupcaoCritica;
+                
+                var telemetry = new Telemetry(
+                    TemperaturaAtual: temperatura,
+                    SetPoint: setpoint,
+                    TemperaturaAlarme: 1600.0,      // Conforme MOMENTO 1
+                    TemperaturaCritica: 1750.0,     // Conforme MOMENTO 1
+                    MacaricoLigado: macaricoOn,
+                    VentiladorLigado: ventiladorOn,
+                    AlarmeAtivo: alarmeOn,
+                    InterrupcaoCritica: interrupcaoCritica,
+                    SistemaAtivo: sistemaAtivo,
+                    Estado: estado,
+                    Timestamp: DateTime.UtcNow
+                );
+                
+                _lastTelemetry = telemetry;
+                TelemetryReceived?.Invoke(this, telemetry);
+                
+                Console.WriteLine($"📊 Telemetria: {temperatura:F1}°C | {estado} | M:{(macaricoOn ? "ON" : "OFF")} V:{(ventiladorOn ? "ON" : "OFF")} A:{(alarmeOn ? "ON" : "OFF")}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ Erro ao interpretar linha: {line} - {ex.Message}");
+        }
+    }
+
+    public void Dispose()
+    {
+        StopAsync().Wait();
+        _port?.Dispose();
+    }
 }
