@@ -1,3 +1,498 @@
 @page "/alarms"
-<h3>Alarmes</h3>
-<p>(Histórico a implementar.)</p>
+@inject FornoSignalRService SignalRService
+@inject FornoApiService ApiService
+@inject IJSRuntime JSRuntime
+@using Forno.Ui.Models
+@using Forno.Ui.Services
+@implements IAsyncDisposable
+
+<PageTitle>🚨 Central de Alarmes - SCADA Dashboard</PageTitle>
+
+<!-- Header da Central de Alarmes -->
+<div class="scada-header mb-4">
+    <div class="row align-items-center">
+        <div class="col-md-8">
+            <h1 class="scada-title mb-0">🚨 Central de Alarmes</h1>
+            <p class="subtitle mb-0">Monitoramento de Alarmes e Eventos Críticos</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <div class="alarm-summary">
+                <div class="alarm-counter critical">
+                    <span class="count">@GetActiveAlarmsCount()</span>
+                    <span class="label">Alarmes Ativos</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_currentTelemetry != null)
+{
+    <!-- Status Crítico Prioritário -->
+    @if (_currentTelemetry.InterrupcaoCritica)
+    {
+        <div class="critical-alarm-banner mb-4">
+            <div class="critical-banner-content">
+                <div class="critical-icon-large">🚨</div>
+                <div class="critical-details">
+                    <h2>INTERRUPÇÃO CRÍTICA ATIVA</h2>
+                    <div class="critical-info">
+                        <div class="info-item">
+                            <span class="info-label">Temperatura Atual:</span>
+                            <span class="info-value critical">@_currentTelemetry.TemperaturaAtual.ToString("F1")°C</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Limite Crítico:</span>
+                            <span class="info-value">@_currentTelemetry.TemperaturaCritica°C</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Tempo Ativo:</span>
+                            <span class="info-value">@GetAlarmDuration(_currentTelemetry.Timestamp)</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="critical-actions">
+                    <button class="btn emergency-stop-large" @onclick="EmergencyStop">
+                        🛑 PARADA TOTAL
+                    </button>
+                    <button class="btn btn-warning mt-2" @onclick="AcknowledgeAlarm">
+                        ✓ Reconhecer
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+    else if (_currentTelemetry.AlarmeAtivo)
+    {
+        <div class="warning-alarm-banner mb-4">
+            <div class="warning-banner-content">
+                <div class="warning-icon-large">⚠️</div>
+                <div class="warning-details">
+                    <h3>ALARME DE TEMPERATURA ATIVO</h3>
+                    <div class="warning-info">
+                        <div class="info-item">
+                            <span class="info-label">Temperatura:</span>
+                            <span class="info-value warning">@_currentTelemetry.TemperaturaAtual.ToString("F1")°C</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Limite Alarme:</span>
+                            <span class="info-value">@_currentTelemetry.TemperaturaAlarme°C</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="warning-actions">
+                    <button class="btn btn-warning" @onclick="AcknowledgeAlarm">
+                        ✓ Reconhecer Alarme
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Dashboard de Monitoramento -->
+    <div class="row mb-4">
+        <!-- Painel de Status Atual -->
+        <div class="col-lg-6 col-md-12 mb-4">
+            <div class="card scada-card">
+                <div class="card-header">
+                    <h5><i class="fas fa-tachometer-alt"></i> Status Atual do Sistema</h5>
+                </div>
+                <div class="card-body">
+                    <div class="system-indicators">
+                        <!-- Temperatura -->
+                        <div class="indicator-group">
+                            <div class="indicator-header">
+                                <i class="fas fa-thermometer-half"></i>
+                                <span>Temperatura</span>
+                            </div>
+                            <div class="indicator-value @GetTemperatureClass(_currentTelemetry.TemperaturaAtual)">
+                                @_currentTelemetry.TemperaturaAtual.ToString("F1")°C
+                            </div>
+                            <div class="indicator-status">
+                                <span class="status-badge @GetTemperatureStatusClass(_currentTelemetry.TemperaturaAtual)">
+                                    @GetTemperatureStatus(_currentTelemetry.TemperaturaAtual)
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Atuadores -->
+                        <div class="actuators-status">
+                            <h6>Atuadores</h6>
+                            <div class="actuator-indicators">
+                                <div class="actuator-item">
+                                    <i class="fas fa-fire @(_currentTelemetry.MacaricoLigado ? "active" : "inactive")"></i>
+                                    <span>Maçarico</span>
+                                    <span class="actuator-state @(_currentTelemetry.MacaricoLigado ? "on" : "off")">
+                                        @(_currentTelemetry.MacaricoLigado ? "ON" : "OFF")
+                                    </span>
+                                </div>
+                                <div class="actuator-item">
+                                    <i class="fas fa-fan @(_currentTelemetry.VentiladorLigado ? "active" : "inactive")"></i>
+                                    <span>Ventilador</span>
+                                    <span class="actuator-state @(_currentTelemetry.VentiladorLigado ? "on" : "off")">
+                                        @(_currentTelemetry.VentiladorLigado ? "ON" : "OFF")
+                                    </span>
+                                </div>
+                                <div class="actuator-item">
+                                    <i class="fas fa-exclamation-triangle @(_currentTelemetry.AlarmeAtivo ? "active alarm" : "inactive")"></i>
+                                    <span>Alarme</span>
+                                    <span class="actuator-state @(_currentTelemetry.AlarmeAtivo ? "alarm" : "off")">
+                                        @(_currentTelemetry.AlarmeAtivo ? "ATIVO" : "INATIVO")
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gráfico de Alarmes -->
+        <div class="col-lg-6 col-md-12 mb-4">
+            <div class="card scada-card">
+                <div class="card-header">
+                    <h5><i class="fas fa-chart-area"></i> Tendência de Alarmes</h5>
+                </div>
+                <div class="card-body">
+                    <div id="alarm-trend-chart" style="height: 300px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Histórico de Alarmes Avançado -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card scada-card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5><i class="fas fa-history"></i> Histórico de Alarmes</h5>
+                    <div class="alarm-filters">
+                        <button class="btn btn-sm btn-outline-primary" @onclick='() => FilterAlarms("all")'>
+                            Todos
+                        </button>
+                        <button class="btn btn-sm btn-outline-warning" @onclick='() => FilterAlarms("warning")'>
+                            Alarmes
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick='() => FilterAlarms("critical")'>
+                            Críticos
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="alarm-history">
+                        @foreach(var alarm in GetFilteredAlarms())
+                        {
+                            <div class="alarm-entry @GetAlarmEntryClass(alarm)">
+                                <div class="alarm-time">
+                                    <div class="time-main">@alarm.Timestamp.ToString("HH:mm:ss")</div>
+                                    <div class="time-date">@alarm.Timestamp.ToString("dd/MM")</div>
+                                </div>
+                                <div class="alarm-icon">
+                                    @if (alarm.Type == "Crítico")
+                                    {
+                                        <i class="fas fa-skull-crossbones"></i>
+                                    }
+                                    else if (alarm.Type == "Alarme Temperatura")
+                                    {
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                    }
+                                    else
+                                    {
+                                        <i class="fas fa-info-circle"></i>
+                                    }
+                                </div>
+                                <div class="alarm-details">
+                                    <div class="alarm-title">@alarm.Type</div>
+                                    <div class="alarm-description">
+                                        Temperatura: @alarm.Temperature.ToString("F1")°C
+                                        @if (!string.IsNullOrEmpty(alarm.Description))
+                                        {
+                                            <span> - @alarm.Description</span>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="alarm-status">
+                                    <span class="status-indicator @(alarm.IsActive ? "active" : "resolved")">
+                                        @(alarm.IsActive ? "ATIVO" : "RESOLVIDO")
+                                    </span>
+                                    @if (alarm.AcknowledgedBy != null)
+                                    {
+                                        <div class="acknowledged">
+                                            <i class="fas fa-check"></i> Reconhecido por @alarm.AcknowledgedBy
+                                        </div>
+                                    }
+                                </div>
+                                <div class="alarm-actions">
+                                    @if (alarm.IsActive && alarm.AcknowledgedBy == null)
+                                    {
+                                        <button class="btn btn-sm btn-outline-warning" @onclick="() => AcknowledgeSpecificAlarm(alarm.Id)">
+                                            <i class="fas fa-check"></i> Reconhecer
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private Telemetry? _currentTelemetry;
+    private List<AlarmHistoryItem> _alarmHistory = new();
+    private List<AlarmHistoryItem> _filteredAlarms = new();
+    private string _currentFilter = "all";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Configurar eventos
+        SignalRService.TelemetryReceived += OnTelemetryReceived;
+        
+        // Iniciar conexão se não estiver conectado
+        if (!SignalRService.IsConnected)
+        {
+            await SignalRService.StartAsync();
+        }
+        
+        // Tentar obter dados iniciais
+        _currentTelemetry = await ApiService.GetTelemetryAsync();
+        
+        // Inicializar histórico de alarmes
+        InitializeAlarmHistory();
+        UpdateFilteredAlarms();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await InitializeAlarmChart();
+        }
+    }
+
+    private async Task InitializeAlarmChart()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("initAlarmTrendChart", "alarm-trend-chart");
+        }
+        catch (Exception)
+        {
+            // Ignorar erros de JavaScript
+        }
+    }
+
+    private void OnTelemetryReceived(object? sender, Telemetry telemetry)
+    {
+        // Verificar se houve mudança no status de alarme
+        if (_currentTelemetry != null)
+        {
+            if (telemetry.AlarmeAtivo && !_currentTelemetry.AlarmeAtivo)
+            {
+                AddAlarmToHistory("Alarme Temperatura", telemetry.TemperaturaAtual, true, 
+                    $"Temperatura atingiu {telemetry.TemperaturaAtual:F1}°C");
+            }
+            else if (!telemetry.AlarmeAtivo && _currentTelemetry.AlarmeAtivo)
+            {
+                UpdateLatestAlarm("Alarme Temperatura", false);
+            }
+            
+            if (telemetry.InterrupcaoCritica && !_currentTelemetry.InterrupcaoCritica)
+            {
+                AddAlarmToHistory("Crítico", telemetry.TemperaturaAtual, true, 
+                    $"INTERRUPÇÃO CRÍTICA - Temperatura: {telemetry.TemperaturaAtual:F1}°C");
+            }
+            else if (!telemetry.InterrupcaoCritica && _currentTelemetry.InterrupcaoCritica)
+            {
+                UpdateLatestAlarm("Crítico", false);
+            }
+        }
+        
+        _currentTelemetry = telemetry;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void InitializeAlarmHistory()
+    {
+        // Histórico simulado para demonstração
+        _alarmHistory = new List<AlarmHistoryItem>
+        {
+            new(Guid.NewGuid(), DateTime.Now.AddMinutes(-30), "Alarme Temperatura", 1720.5, false, 
+                "Temperatura de alarme atingida", "Operador"),
+            new(Guid.NewGuid(), DateTime.Now.AddMinutes(-45), "Crítico", 1805.2, false, 
+                "Interrupção crítica ativada", "Sistema"),
+            new(Guid.NewGuid(), DateTime.Now.AddHours(-2), "Alarme Temperatura", 1698.8, false, 
+                "Limite de alarme excedido", "Operador"),
+            new(Guid.NewGuid(), DateTime.Now.AddHours(-4), "Crítico", 1812.1, false, 
+                "Temperatura crítica detectada", "Sistema"),
+            new(Guid.NewGuid(), DateTime.Now.AddHours(-6), "Informativo", 1450.0, false, 
+                "Sistema reiniciado", null),
+        };
+        
+        // Ordenar por timestamp (mais recente primeiro)
+        _alarmHistory = _alarmHistory.OrderByDescending(a => a.Timestamp).ToList();
+    }
+
+    private void AddAlarmToHistory(string type, double temperature, bool isActive, string description = "")
+    {
+        var newAlarm = new AlarmHistoryItem(
+            Guid.NewGuid(),
+            DateTime.Now, 
+            type, 
+            temperature, 
+            isActive, 
+            description,
+            null
+        );
+        
+        _alarmHistory.Insert(0, newAlarm);
+        
+        // Manter apenas últimos 20 alarmes
+        if (_alarmHistory.Count > 20)
+        {
+            _alarmHistory.RemoveAt(_alarmHistory.Count - 1);
+        }
+        
+        UpdateFilteredAlarms();
+    }
+
+    private void UpdateLatestAlarm(string type, bool isActive)
+    {
+        var latestAlarm = _alarmHistory.FirstOrDefault(a => a.Type == type && a.IsActive);
+        if (latestAlarm != null)
+        {
+            var index = _alarmHistory.IndexOf(latestAlarm);
+            _alarmHistory[index] = latestAlarm with { IsActive = isActive };
+            UpdateFilteredAlarms();
+        }
+    }
+
+    private void FilterAlarms(string filter)
+    {
+        _currentFilter = filter;
+        UpdateFilteredAlarms();
+    }
+
+    private void UpdateFilteredAlarms()
+    {
+        _filteredAlarms = _currentFilter switch
+        {
+            "warning" => _alarmHistory.Where(a => a.Type == "Alarme Temperatura").ToList(),
+            "critical" => _alarmHistory.Where(a => a.Type == "Crítico").ToList(),
+            _ => _alarmHistory.ToList()
+        };
+    }
+
+    private List<AlarmHistoryItem> GetFilteredAlarms()
+    {
+        return _filteredAlarms;
+    }
+
+    // Métodos auxiliares
+    private int GetActiveAlarmsCount()
+    {
+        return _alarmHistory.Count(a => a.IsActive);
+    }
+
+    private string GetAlarmDuration(DateTime timestamp)
+    {
+        var duration = DateTime.Now - timestamp;
+        if (duration.TotalMinutes < 1)
+            return $"{(int)duration.TotalSeconds}s";
+        if (duration.TotalHours < 1)
+            return $"{(int)duration.TotalMinutes}m";
+        return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+    }
+
+    private string GetTemperatureClass(double temp)
+    {
+        if (temp >= AlarmThresholds.TEMP_CRITICA) return "text-danger fw-bold";
+        if (temp >= AlarmThresholds.TEMP_ALARME) return "text-warning fw-bold";
+        return "text-success";
+    }
+
+    private string GetTemperatureStatusClass(double temp)
+    {
+        if (temp >= AlarmThresholds.TEMP_CRITICA) return "status-critical";
+        if (temp >= AlarmThresholds.TEMP_ALARME) return "status-warning";
+        return "status-normal";
+    }
+
+    private string GetTemperatureStatus(double temp)
+    {
+        if (temp >= AlarmThresholds.TEMP_CRITICA) return "CRÍTICO";
+        if (temp >= AlarmThresholds.TEMP_ALARME) return "ALARME";
+        return "NORMAL";
+    }
+
+    private string GetAlarmEntryClass(AlarmHistoryItem alarm)
+    {
+        var baseClass = "alarm-entry";
+        if (alarm.Type == "Crítico") baseClass += " critical";
+        else if (alarm.Type == "Alarme Temperatura") baseClass += " warning";
+        else baseClass += " info";
+        
+        if (alarm.IsActive) baseClass += " active";
+        
+        return baseClass;
+    }
+
+    // Ações
+    private Task AcknowledgeAlarm()
+    {
+        if (_currentTelemetry?.AlarmeAtivo == true || _currentTelemetry?.InterrupcaoCritica == true)
+        {
+            var activeAlarm = _alarmHistory.FirstOrDefault(a => a.IsActive);
+            if (activeAlarm != null)
+            {
+                var index = _alarmHistory.IndexOf(activeAlarm);
+                _alarmHistory[index] = activeAlarm with { AcknowledgedBy = "Operador" };
+                UpdateFilteredAlarms();
+                StateHasChanged();
+            }
+        }
+        return Task.CompletedTask;
+    }
+
+    private Task AcknowledgeSpecificAlarm(Guid alarmId)
+    {
+        var alarm = _alarmHistory.FirstOrDefault(a => a.Id == alarmId);
+        if (alarm != null)
+        {
+            var index = _alarmHistory.IndexOf(alarm);
+            _alarmHistory[index] = alarm with { AcknowledgedBy = "Operador" };
+            UpdateFilteredAlarms();
+            StateHasChanged();
+        }
+        return Task.CompletedTask;
+    }
+
+    private async Task ResetSystem()
+    {
+        await ApiService.ResetSystemAsync();
+    }
+
+    private async Task EmergencyStop()
+    {
+        await ApiService.EmergencyStopAsync();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        SignalRService.TelemetryReceived -= OnTelemetryReceived;
+        return ValueTask.CompletedTask;
+    }
+
+    // Record para item de histórico de alarme
+    private record AlarmHistoryItem(
+        Guid Id,
+        DateTime Timestamp, 
+        string Type, 
+        double Temperature, 
+        bool IsActive, 
+        string Description,
+        string? AcknowledgedBy
+    );
+}

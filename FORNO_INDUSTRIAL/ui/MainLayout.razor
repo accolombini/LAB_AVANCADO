@@ -1,0 +1,93 @@
+@using Forno.Ui.Services
+@using Microsoft.AspNetCore.Components.Routing
+@inherits LayoutComponentBase
+@inject FornoSignalRService SignalRService
+@implements IAsyncDisposable
+
+<div class="page">
+    <!-- Header SCADA -->
+    <header class="scada-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="scada-title">
+                    🔥 Forno Industrial - SCADA Dashboard
+                </h1>
+                <small>MOMENTO 3 - Monitoramento e Controle em Tempo Real</small>
+            </div>
+            <div class="connection-status">
+                <span class="status-indicator @(_isConnected ? "status-online" : "status-offline")"></span>
+                <span>@(_isConnected ? "Online" : "Offline")</span>
+                <small class="ms-2">@DateTime.Now.ToString("HH:mm:ss")</small>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <div class="navbar-nav">
+                <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
+                    📊 Dashboard
+                </NavLink>
+                <NavLink class="nav-link" href="/alarms">
+                    🚨 Alarmes
+                </NavLink>
+                <NavLink class="nav-link" href="/settings">
+                    ⚙️ Configurações
+                </NavLink>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container-fluid mt-3">
+        @Body
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-light text-center py-2 mt-4">
+        <small>
+            © 2025 - Forno Industrial SCADA | 
+            MOMENTO 1: Arduino ✅ | 
+            MOMENTO 2: API ✅ | 
+            MOMENTO 3: Dashboard ✅
+        </small>
+    </footer>
+</div>
+
+@code {
+    private bool _isConnected = false;
+    private Timer? _clockTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        
+        // Configurar eventos SignalR
+        SignalRService.ConnectionChanged += OnConnectionChanged;
+        
+        // Iniciar conexão
+        await SignalRService.StartAsync();
+        
+        // Timer para atualizar relógio
+        _clockTimer = new Timer(UpdateClock, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
+    }
+
+    private void OnConnectionChanged(object? sender, bool isConnected)
+    {
+        _isConnected = isConnected;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void UpdateClock(object? state)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        SignalRService.ConnectionChanged -= OnConnectionChanged;
+        await SignalRService.DisposeAsync();
+        _clockTimer?.Dispose();
+    }
+}

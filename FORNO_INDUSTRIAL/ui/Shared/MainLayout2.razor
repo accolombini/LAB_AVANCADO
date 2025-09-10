@@ -1,0 +1,96 @@
+@using Forno.Ui.Services
+@using Microsoft.AspNetCore.Components.Routing
+@inherits LayoutComponentBase
+@inject FornoSignalRService SignalRService
+@implements IDisposable
+
+<div class="page">
+    <!-- Header SCADA -->
+    <header class="scada-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h2><i class="fas fa-fire"></i> Forno Industrial SCADA</h2>
+            </div>
+            <div class="d-flex align-items-center">
+                <!-- Status da Conexão -->
+                <div class="me-3">
+                    <span class="status-indicator @(_isConnected ? "status-online" : "status-offline")"></span>
+                    <small>@(_isConnected ? "Online" : "Offline")</small>
+                </div>
+                <!-- Relógio -->
+                <div class="me-3">
+                    <i class="fas fa-clock"></i>
+                    <span>@_currentTime.ToString("HH:mm:ss")</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navegação -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <NavLink class="navbar-brand" href="/" Match="NavLinkMatch.All">
+                <i class="fas fa-home"></i> Dashboard
+            </NavLink>
+            
+            <div class="navbar-nav me-auto">
+                <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
+                    <i class="fas fa-tachometer-alt"></i> Principal
+                </NavLink>
+                <NavLink class="nav-link" href="/alarms">
+                    <i class="fas fa-exclamation-triangle"></i> Alarmes
+                </NavLink>
+                <NavLink class="nav-link" href="/settings">
+                    <i class="fas fa-cogs"></i> Configurações
+                </NavLink>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Conteúdo Principal -->
+    <main class="container-fluid py-3">
+        @Body
+    </main>
+</div>
+
+@code {
+    private bool _isConnected = false;
+    private DateTime _currentTime = DateTime.Now;
+    private System.Timers.Timer? _timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Configurar eventos SignalR
+        SignalRService.ConnectionChanged += OnConnectionChanged;
+        
+        // Timer para atualizar relógio
+        _timer = new System.Timers.Timer(1000);
+        _timer.Elapsed += (_, __) => {
+            _currentTime = DateTime.Now;
+            InvokeAsync(StateHasChanged);
+        };
+        _timer.Start();
+        
+        // Verificar conexão inicial
+        _isConnected = SignalRService.IsConnected;
+        
+        // Iniciar conexão se necessário
+        if (!_isConnected)
+        {
+            await SignalRService.StartAsync();
+        }
+    }
+
+    private void OnConnectionChanged(object? sender, bool isConnected)
+    {
+        _isConnected = isConnected;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        SignalRService.ConnectionChanged -= OnConnectionChanged;
+        _timer?.Stop();
+        _timer?.Dispose();
+    }
+}

@@ -134,10 +134,11 @@ public sealed class SimulatedDevice : IDevice
             Console.WriteLine("⚠️ *** ALARME! TEMPERATURA CRÍTICA >= 1600°C ***");
         }
         
-        // Desligar alarme se temperatura baixou (e não está em interrupção)
+        // Desligar alarme se temperatura baixou para < 1600°C (e não está em interrupção)
         if (!_interrupcaoCritica && _temperaturaAtual < _tempAlarme && _alarmeAtivo)
         {
             _alarmeAtivo = false;
+            Console.WriteLine("✅ *** ALARME DESATIVADO - TEMP < 1600°C ***");
         }
         
         // Manter alarme durante interrupção crítica

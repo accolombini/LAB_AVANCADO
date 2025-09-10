@@ -1,133 +1,513 @@
 @page "/"
-@using System.Net.Http.Json
-@inject HttpClient Http
+@inject FornoSignalRService SignalRService
+@inject FornoApiService ApiService
+@inject IJSRuntime JSRuntime
+@using Forno.Ui.Models
+@using Forno.Ui.Services
+@implements IAsyncDisposable
 
-<h1>SCADA – Forno Industrial</h1>
+<PageTitle>🔥 Forno Industrial - SCADA Dashboard</PageTitle>
 
-@if (data is null)
+<!-- Header do SCADA -->
+<div class="scada-header mb-4">
+    <div class="row align-items-center">
+        <div class="col-md-8">
+            <h1 class="scada-title mb-0">🔥 Forno Industrial - SCADA Dashboard</h1>
+            <p class="subtitle mb-0">MOMENTO 3 - Monitoramento e Controle em Tempo Real</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <div class="connection-status">
+                <span class="status-indicator @(_isConnected ? "status-online" : "status-offline")"></span>
+                <span class="status-text">@(_isConnected ? "🟢 Sistema Online" : "🔴 Sistema Offline")</span>
+                <div class="timestamp">@DateTime.Now.ToString("HH:mm:ss")</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Painel de Status Crítico -->
+@if (_currentTelemetry?.InterrupcaoCritica == true)
 {
-    <p>Carregando telemetria…</p>
+    <div class="critical-alert-panel mb-4">
+        <div class="critical-content">
+            <div class="critical-icon">🚨</div>
+            <div class="critical-text">
+                <h2>INTERRUPÇÃO CRÍTICA ATIVA</h2>
+                <p>Temperatura: @_currentTelemetry.TemperaturaAtual.ToString("F1")°C - Sistema em Resfriamento Forçado</p>
+            </div>
+            <div class="critical-actions">
+                <button class="btn btn-danger btn-lg emergency-stop" @onclick="EmergencyStop">
+                    🛑 PARADA TOTAL
+                </button>
+            </div>
+        </div>
+    </div>
+}
+else if (_currentTelemetry?.AlarmeAtivo == true)
+{
+    <div class="warning-alert-panel mb-4">
+        <div class="warning-content">
+            <div class="warning-icon">⚠️</div>
+            <div class="warning-text">
+                <h3>ALARME DE TEMPERATURA ATIVO</h3>
+                <p>Temperatura atingiu @_currentTelemetry.TemperaturaAtual.ToString("F1")°C - Monitore o sistema</p>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_currentTelemetry != null)
+{
+    <!-- Dashboard Principal -->
+    <div class="row">
+        <!-- Gauge de Temperatura Principal -->
+        <div class="col-lg-5 col-md-6 mb-4">
+            <div class="card scada-card h-100">
+                <div class="card-header">
+                    <h5><i class="fas fa-thermometer-half"></i> Temperatura Principal</h5>
+                </div>
+                <div class="card-body text-center">
+                    <div class="temperature-gauge-container">
+                        <div id="temperature-gauge" style="height: 350px;"></div>
+                    </div>
+                    <div class="temperature-info mt-3">
+                        <div class="temp-current @GetTemperatureClass(_currentTelemetry.TemperaturaAtual)">
+                            @_currentTelemetry.TemperaturaAtual.ToString("F1")°C
+                        </div>
+                        <div class="temp-setpoint">
+                            Setpoint: @_currentTelemetry.SetPoint.ToString("F0")°C
+                        </div>
+                        <div class="temp-range">
+                            Alarme: @_currentTelemetry.TemperaturaAlarme°C | 
+                            Crítico: @_currentTelemetry.TemperaturaCritica°C
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status dos Atuadores -->
+        <div class="col-lg-4 col-md-6 mb-4">
+            <div class="card scada-card h-100">
+                <div class="card-header">
+                    <h5><i class="fas fa-cogs"></i> Status dos Atuadores</h5>
+                </div>
+                <div class="card-body">
+                    <div class="actuators-grid">
+                        <!-- Maçarico -->
+                        <div class="actuator-card @(_currentTelemetry.MacaricoLigado ? "actuator-active" : "actuator-inactive")">
+                            <div class="actuator-icon">
+                                <i class="fas fa-fire"></i>
+                            </div>
+                            <div class="actuator-info">
+                                <div class="actuator-name">Maçarico</div>
+                                <div class="actuator-status">@(_currentTelemetry.MacaricoLigado ? "LIGADO" : "DESLIGADO")</div>
+                            </div>
+                            <div class="actuator-indicator @(_currentTelemetry.MacaricoLigado ? "led-on" : "led-off")"></div>
+                        </div>
+
+                        <!-- Ventilador -->
+                        <div class="actuator-card @(_currentTelemetry.VentiladorLigado ? "actuator-active" : "actuator-inactive")">
+                            <div class="actuator-icon">
+                                <i class="fas fa-wind"></i>
+                            </div>
+                            <div class="actuator-info">
+                                <div class="actuator-name">Ventilador</div>
+                                <div class="actuator-status">@(_currentTelemetry.VentiladorLigado ? "LIGADO" : "DESLIGADO")</div>
+                            </div>
+                            <div class="actuator-indicator @(_currentTelemetry.VentiladorLigado ? "led-on" : "led-off")"></div>
+                        </div>
+
+                        <!-- Alarme -->
+                        <div class="actuator-card @(_currentTelemetry.AlarmeAtivo ? "actuator-alarm" : "actuator-inactive")">
+                            <div class="actuator-icon">
+                                <i class="fas fa-bullhorn"></i>
+                            </div>
+                            <div class="actuator-info">
+                                <div class="actuator-name">Alarme</div>
+                                <div class="actuator-status">@(_currentTelemetry.AlarmeAtivo ? "ATIVO" : "INATIVO")</div>
+                            </div>
+                            <div class="actuator-indicator @(_currentTelemetry.AlarmeAtivo ? "led-alarm" : "led-off")"></div>
+                        </div>
+                    </div>
+
+                    <!-- Estado do Sistema -->
+                    <div class="system-state mt-4">
+                        <h6>Estado do Sistema:</h6>
+                        <div class="state-display @GetStateClass(_currentTelemetry.Estado)">
+                            @_currentTelemetry.Estado
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Painel de Controles -->
+        <div class="col-lg-3 col-md-12 mb-4">
+            <div class="card scada-card h-100">
+                <div class="card-header">
+                    <h5><i class="fas fa-sliders-h"></i> Controles</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Controle de Setpoint -->
+                    <div class="control-group mb-4">
+                        <label class="control-label">Setpoint (°C)</label>
+                        <div class="setpoint-control">
+                            <input type="number" class="form-control control-input" 
+                                   @bind="newSetpoint" 
+                                   min="1000" max="1800" step="10" />
+                            <button class="btn btn-primary control-button mt-2" 
+                                    @onclick="SetTemperature" 
+                                    disabled="@(!_isConnected)">
+                                <i class="fas fa-check"></i> Aplicar
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Botões de Ação -->
+                    <div class="action-buttons">
+                        <button class="btn btn-warning action-btn mb-2" 
+                                @onclick="ResetSystem" 
+                                disabled="@(!_isConnected)">
+                            <i class="fas fa-redo"></i> Reset Sistema
+                        </button>
+                        
+                        <button class="btn btn-danger emergency-button" 
+                                @onclick="EmergencyStop" 
+                                disabled="@(!_isConnected)">
+                            <i class="fas fa-exclamation-triangle"></i> PARADA EMERGÊNCIA
+                        </button>
+                    </div>
+
+                    <!-- Indicadores de Status -->
+                    <div class="status-indicators mt-4">
+                        <div class="indicator-row">
+                            <span class="indicator-label">Conexão:</span>
+                            <span class="indicator-value @(_isConnected ? "text-success" : "text-danger")">
+                                @(_isConnected ? "Online" : "Offline")
+                            </span>
+                        </div>
+                        <div class="indicator-row">
+                            <span class="indicator-label">Sistema:</span>
+                            <span class="indicator-value @(_currentTelemetry.SistemaAtivo ? "text-success" : "text-danger")">
+                                @(_currentTelemetry.SistemaAtivo ? "Ativo" : "Inativo")
+                            </span>
+                        </div>
+                        <div class="indicator-row">
+                            <span class="indicator-label">Última Atualização:</span>
+                            <span class="indicator-value">@_currentTelemetry.Timestamp.ToString("HH:mm:ss")</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráficos e Tendências -->
+    <div class="row">
+        <!-- Gráfico de Tendência Principal -->
+        <div class="col-lg-8 col-md-12 mb-4">
+            <div class="card scada-card">
+                <div class="card-header">
+                    <h5><i class="fas fa-chart-line"></i> Tendência de Temperatura em Tempo Real</h5>
+                </div>
+                <div class="card-body">
+                    <div id="temperature-trend-chart" style="height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gráfico Circular de Estado -->
+        <div class="col-lg-4 col-md-12 mb-4">
+            <div class="card scada-card">
+                <div class="card-header">
+                    <h5><i class="fas fa-chart-pie"></i> Distribuição de Estados</h5>
+                </div>
+                <div class="card-body">
+                    <div id="status-pie-chart" style="height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Painel de Estatísticas -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card scada-card">
+                <div class="card-header">
+                    <h5><i class="fas fa-chart-bar"></i> Estatísticas Operacionais</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-3 col-sm-6 mb-3">
+                            <div class="stat-card">
+                                <div class="stat-icon"><i class="fas fa-thermometer-three-quarters"></i></div>
+                                <div class="stat-value">@GetTemperatureAverage().ToString("F1")°C</div>
+                                <div class="stat-label">Temperatura Média</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6 mb-3">
+                            <div class="stat-card">
+                                <div class="stat-icon"><i class="fas fa-arrow-up"></i></div>
+                                <div class="stat-value">@GetMaxTemperature().ToString("F1")°C</div>
+                                <div class="stat-label">Máxima Registrada</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6 mb-3">
+                            <div class="stat-card">
+                                <div class="stat-icon"><i class="fas fa-clock"></i></div>
+                                <div class="stat-value">@GetUptimeMinutes()</div>
+                                <div class="stat-label">Tempo Online (min)</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6 mb-3">
+                            <div class="stat-card">
+                                <div class="stat-icon"><i class="fas fa-fire"></i></div>
+                                <div class="stat-value">@GetMacaricoActivePercentage().ToString("F0")%</div>
+                                <div class="stat-label">Maçarico Ativo</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 }
 else
 {
-    <div class="grid">
-        <div>
-            <h3>Processo</h3>
-            <p><b>Temperatura:</b> @data.T:F1 °C</p>
-            <p><b>Setpoint:</b> @data.SP:F1 °C</p>
-            <p><b>Estado:</b> @data.State</p>
-            <p><b>Alarme:</b> @data.Alarm</p>
-            <p><b>E-STOP:</b> @(data.EStop ? "ATIVO" : "OK")</p>
-            <p><b>Δt E-STOP:</b> @data.DtEstopUs µs</p>
+    <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Carregando...</span>
         </div>
-        <div>
-            <h3>Atuadores</h3>
-            <p>Heater PWM: @data.Heater</p>
-            <p>Fan PWM: @data.Fan</p>
-        </div>
+        <p class="mt-3">Aguardando dados do forno...</p>
     </div>
-
-    <h3>Tendência (últimos 60s)</h3>
-    <svg width="800" height="220" style="border:1px solid #ccc; background:#fafafa">
-        <polyline fill="none" stroke="black" stroke-width="2" points="@PolylinePoints" />
-        <line x1="40" y1="10" x2="40" y2="210" stroke="black" stroke-width="1" />
-        <line x1="40" y1="210" x2="790" y2="210" stroke="black" stroke-width="1" />
-        <text x="45" y="20"> @($"{MinY:F1}°C") </text>
-        <text x="45" y="200"> @($"{MaxY:F1}°C") </text>
-    </svg>
-
-    <h3>Comandos</h3>
-    <button @onclick='() => Send("START;")'>Start</button>
-    <button @onclick='() => Send("STOP;")'>Stop</button>
-    <button @onclick='() => Send("RST_ESTOP;")'>Reset E‑Stop</button>
-    <button @onclick='() => Send("MODE=AUTO;")'>Auto</button>
-    <button @onclick='() => Send("MODE=MAN;")'>Manual</button>
-
-    <div>
-        <label>Setpoint:</label>
-        <input type="number" @bind="sp" step="0.1" />
-        <button @onclick="SetSp">Aplicar</button>
-    </div>
-
-    <div>
-        <label>Limites (min, max, crit):</label>
-        <input type="number" @bind="lmin" step="0.1" />
-        <input type="number" @bind="lmax" step="0.1" />
-        <input type="number" @bind="lcrit" step="0.1" />
-        <button @onclick="SetLims">Aplicar</button>
-    </div>
-
-    <div>
-        <label>Manual PWM (heater, fan):</label>
-        <input type="number" @bind="manH" min="0" max="255" />
-        <input type="number" @bind="manF" min="0" max="255" />
-        <button @onclick="SetMan">Aplicar</button>
-    </div>
-
-    <hr />
-    <footer>
-        <small>
-            <b>Último comando:</b> @last?.command ?? "-" |
-            <b>Resposta:</b> @last?.response ?? "-" |
-            <b>Quando (UTC):</b> @(last?.timestampUtc?.ToString("HH:mm:ss") ?? "-")
-        </small>
-    </footer>
 }
 
 @code {
-    private const string API = "http://localhost:5199";
-    private Telemetry? data;
-    private System.Timers.Timer? timer;
-    private double sp=180, lmin=120, lmax=220, lcrit=240; private int manH=0, manF=0;
+    private Telemetry? _currentTelemetry;
+    private bool _isConnected = false;
+    private double newSetpoint = 1500;
+    private List<TemperatureDataPoint> _temperatureHistory = new();
+    private List<StateHistoryItem> _stateHistory = new();
+    private DateTime _startTime = DateTime.Now;
 
-    private System.Collections.Generic.List<double> _series = new();
-    private const int MaxSamples = 120;
-    private string PolylinePoints => BuildPolyline();
-    private double MinY=0, MaxY=0;
-
-    private LastLog? last;
-
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        Http.BaseAddress = new Uri("http://localhost:5199");
-        timer = new System.Timers.Timer(500);
-        timer.Elapsed += async (_, __) =>
+        // Configurar eventos
+        SignalRService.TelemetryReceived += OnTelemetryReceived;
+        SignalRService.ConnectionChanged += OnConnectionChanged;
+        
+        // Iniciar conexão se não estiver conectado
+        if (!SignalRService.IsConnected)
         {
-            try
-            {
-                data = await Http.GetFromJsonAsync<Telemetry>($"{API}/api/telemetry");
-                if (data is not null) { _series.Add(data.T); if (_series.Count > MaxSamples) _series.RemoveAt(0); }
-                try { last = await Http.GetFromJsonAsync<LastLog>($"{API}/api/last"); } catch { }
-                StateHasChanged();
-            }
-            catch { }
-        };
-        timer.Start();
-    }
-
-    private Task Send(string c) => Http.PostAsJsonAsync($"{API}/api/cmd", c);
-    private Task SetSp() => Send($"SET_SP={sp};");
-    private Task SetLims() => Send($"SET_LIMS={lmin},{lmax},{lcrit};");
-    private Task SetMan() => Send($"MAN={manH},{manF};");
-
-    private string BuildPolyline()
-    {
-        if (_series.Count == 0) return "";
-        MinY = _series.Min();
-        MaxY = _series.Max();
-        if (Math.Abs(MaxY - MinY) < 1e-6) MaxY = MinY + 1;
-        double x0=40, y0=10, w=750, h=200;
-        var sb = new System.Text.StringBuilder();
-        for (int i=0;i<_series.Count;i++)
-        {
-            var x = x0 + (i/(double)(MaxSamples-1))*w;
-            var norm = (_series[i]-MinY)/(MaxY-MinY);
-            var y = y0 + (1.0 - norm) * h;
-            sb.Append($"{x:F1},{y:F1} ");
+            await SignalRService.StartAsync();
         }
-        return sb.ToString();
+        
+        // Atualizar status de conexão
+        _isConnected = SignalRService.IsConnected;
+        
+        // Tentar obter dados iniciais
+        _currentTelemetry = await ApiService.GetTelemetryAsync();
+        if (_currentTelemetry != null)
+        {
+            newSetpoint = _currentTelemetry.SetPoint;
+            AddTemperaturePoint(_currentTelemetry);
+            AddStatePoint(_currentTelemetry);
+            // Se conseguimos obter dados da API, consideramos sistema online
+            _isConnected = true;
+        }
     }
 
-    public record Telemetry(double T,double SP,double LimMin,double LimMax,double LimCrit,string Mode,string State,int Heater,int Fan,string Alarm,bool EStop,long DtEstopUs,long LoopUs,DateTime Timestamp);
-    public record LastLog(string? command, string? response, DateTime? timestampUtc);
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await InitializeCharts();
+        }
+    }
+
+    private async Task InitializeCharts()
+    {
+        try
+        {
+            // Inicializar gauge de temperatura
+            if (_currentTelemetry != null)
+            {
+                await JSRuntime.InvokeVoidAsync("initTemperatureGauge", 
+                    "temperature-gauge", 
+                    _currentTelemetry.TemperaturaAtual, 
+                    _currentTelemetry.SetPoint);
+            }
+            
+            // Inicializar gráfico de tendência
+            await JSRuntime.InvokeVoidAsync("initTrendChart", "temperature-trend-chart");
+            
+            // Inicializar gráfico circular
+            await JSRuntime.InvokeVoidAsync("initStatusPieChart", "status-pie-chart");
+        }
+        catch (Exception)
+        {
+            // Ignorar erros de JavaScript durante desenvolvimento
+        }
+    }
+
+    private void OnTelemetryReceived(object? sender, Telemetry telemetry)
+    {
+        _currentTelemetry = telemetry;
+        _isConnected = true; // Se recebemos dados, sistema está online
+        AddTemperaturePoint(telemetry);
+        AddStatePoint(telemetry);
+        InvokeAsync(StateHasChanged);
+        InvokeAsync(() => UpdateCharts(telemetry));
+    }
+
+    private async Task UpdateCharts(Telemetry telemetry)
+    {
+        try
+        {
+            // Atualizar gauge
+            await JSRuntime.InvokeVoidAsync("updateTemperatureGauge",
+                "temperature-gauge",
+                telemetry.TemperaturaAtual,
+                telemetry.SetPoint);
+
+            // Atualizar gráfico de tendência
+            await JSRuntime.InvokeVoidAsync("updateTrendChart",
+                "temperature-trend-chart",
+                telemetry.Timestamp,
+                telemetry.TemperaturaAtual,
+                telemetry.SetPoint,
+                telemetry.TemperaturaAlarme,
+                telemetry.TemperaturaCritica);
+
+            // Atualizar gráfico circular
+            await JSRuntime.InvokeVoidAsync("updateStatusPieChart",
+                "status-pie-chart",
+                GetStateDistribution());
+        }
+        catch (Exception)
+        {
+            // Ignorar erros de JavaScript
+        }
+    }
+
+    private void OnConnectionChanged(object? sender, bool isConnected)
+    {
+        _isConnected = isConnected;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void AddTemperaturePoint(Telemetry telemetry)
+    {
+        _temperatureHistory.Add(new TemperatureDataPoint(
+            telemetry.Timestamp,
+            telemetry.TemperaturaAtual,
+            telemetry.Estado
+        ));
+        
+        // Manter apenas últimos 100 pontos
+        if (_temperatureHistory.Count > 100)
+        {
+            _temperatureHistory.RemoveAt(0);
+        }
+    }
+
+    private void AddStatePoint(Telemetry telemetry)
+    {
+        _stateHistory.Add(new StateHistoryItem(
+            telemetry.Timestamp,
+            telemetry.Estado,
+            telemetry.MacaricoLigado,
+            telemetry.VentiladorLigado,
+            telemetry.AlarmeAtivo
+        ));
+        
+        // Manter apenas últimos 200 pontos
+        if (_stateHistory.Count > 200)
+        {
+            _stateHistory.RemoveAt(0);
+        }
+    }
+
+    private string GetTemperatureClass(double temp)
+    {
+        if (temp >= AlarmThresholds.TEMP_CRITICA) return "temp-critical";
+        if (temp >= AlarmThresholds.TEMP_ALARME) return "temp-warning";
+        return "temp-normal";
+    }
+
+    private string GetStateClass(string estado)
+    {
+        return estado.ToLower() switch
+        {
+            var s when s.Contains("critica") => "state-critical",
+            var s when s.Contains("alarme") => "state-warning",
+            var s when s.Contains("aquecendo") => "state-heating",
+            var s when s.Contains("resfriando") => "state-cooling",
+            _ => "state-normal"
+        };
+    }
+
+    private double GetTemperatureAverage()
+    {
+        if (_temperatureHistory.Count == 0) return 0;
+        return _temperatureHistory.Average(p => p.Temperature);
+    }
+
+    private double GetMaxTemperature()
+    {
+        if (_temperatureHistory.Count == 0) return 0;
+        return _temperatureHistory.Max(p => p.Temperature);
+    }
+
+    private int GetUptimeMinutes()
+    {
+        return (int)(DateTime.Now - _startTime).TotalMinutes;
+    }
+
+    private double GetMacaricoActivePercentage()
+    {
+        if (_stateHistory.Count == 0) return 0;
+        var activeCount = _stateHistory.Count(s => s.MacaricoLigado);
+        return (double)activeCount / _stateHistory.Count * 100;
+    }
+
+    private object GetStateDistribution()
+    {
+        if (_stateHistory.Count == 0) return new { };
+        
+        var states = _stateHistory.GroupBy(s => s.Estado)
+                                 .ToDictionary(g => g.Key, g => g.Count());
+        
+        return states;
+    }
+
+    private async Task SetTemperature()
+    {
+        if (await ApiService.SetTemperatureAsync(newSetpoint))
+        {
+            // Success feedback could be added here
+        }
+    }
+
+    private async Task ResetSystem()
+    {
+        await ApiService.ResetSystemAsync();
+    }
+
+    private async Task EmergencyStop()
+    {
+        await ApiService.EmergencyStopAsync();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        SignalRService.TelemetryReceived -= OnTelemetryReceived;
+        SignalRService.ConnectionChanged -= OnConnectionChanged;
+        return ValueTask.CompletedTask;
+    }
+
+    // Records para armazenar histórico
+    private record TemperatureDataPoint(DateTime Timestamp, double Temperature, string State);
+    private record StateHistoryItem(DateTime Timestamp, string Estado, bool MacaricoLigado, bool VentiladorLigado, bool AlarmeAtivo);
 }

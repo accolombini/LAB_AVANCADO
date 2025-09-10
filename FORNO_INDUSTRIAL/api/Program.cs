@@ -4,6 +4,9 @@ using Forno.Api.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ========== CONFIGURAÇÃO DE PORTA ==========
+builder.WebHost.UseUrls("http://localhost:5002");
+
 // ========== CONFIGURAÇÃO DE SERVIÇOS ==========
 
 // Logging
@@ -53,6 +56,13 @@ builder.Services.AddCors(options =>
         policy.AllowAnyOrigin()
               .AllowAnyHeader()
               .AllowAnyMethod());
+    
+    // Política específica para SignalR (precisa de AllowCredentials)
+    options.AddPolicy("SignalRPolicy", policy =>
+        policy.WithOrigins("http://localhost:5001", "https://localhost:5001")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials());
 });
 
 // ========== CONFIGURAÇÃO DA APLICAÇÃO ==========
@@ -70,10 +80,11 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseCors();
+// CORS deve vir antes de UseRouting e aplicar a todos os endpoints
+app.UseCors("SignalRPolicy");
 app.UseRouting();
 
-// SignalR Hub
+// SignalR Hub - com política específica para credenciais
 app.MapHub<FornoHub>("/hubs/forno");
 
 // ========== API ENDPOINTS ==========
