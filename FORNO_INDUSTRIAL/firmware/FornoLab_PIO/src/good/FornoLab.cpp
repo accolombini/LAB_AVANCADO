@@ -81,15 +81,19 @@ void verificar_temperatura_critica() {
     Serial.println("*** ALARME! TEMPERATURA CRITICA >= 1600C ***");
   }
   
-  // Desligar alarme se temperatura baixou (e não está em interrupção)
-  if (!interrupcao_critica && temperatura_atual < TEMP_ALARME && alarme_ativo) {
+  // Desligar alarme quando temperatura retorna ao setpoint (1500°C)
+  if (!interrupcao_critica && temperatura_atual <= TEMP_SETPOINT && alarme_ativo) {
     alarme_ativo = false;
     digitalWrite(PIN_ALARME, LOW);
+    Serial.println("*** ALARME DESLIGADO - TEMP <= 1500C ***");
   }
   
   // Manter alarme ligado durante interrupção crítica
   if (interrupcao_critica) {
     digitalWrite(PIN_ALARME, HIGH);
+  } else {
+    // Controlar LED do alarme baseado no estado do alarme_ativo
+    digitalWrite(PIN_ALARME, alarme_ativo ? HIGH : LOW);
   }
 }
 
@@ -153,6 +157,7 @@ void simular_temperatura() {
 
 // ========== EXIBIR STATUS ==========
 void exibir_status() {
+  // Linha 1: Temperatura e status do sistema
   Serial.print("TEMP: ");
   Serial.print(temperatura_atual, 1);
   Serial.print("C | SP: ");
@@ -168,19 +173,26 @@ void exibir_status() {
   } else {
     Serial.print("MANTENDO (-1C)");
   }
+  Serial.println();
   
-  Serial.print(" | M:");
-  Serial.print(macarico_ligado ? "ON" : "OFF");
-  Serial.print(" V:");
-  Serial.print(ventilador_ligado ? "ON" : "OFF");
-  Serial.print(" A:");
-  Serial.print(alarme_ativo ? "ON" : "OFF");
+  // Linha 2: Status dos componentes com espaçamento adequado
+  Serial.print("MACARICO: ");
+  Serial.print(macarico_ligado ? "LIGADO     " : "DESLIGADO  ");
+  Serial.print(" | ");
+  
+  Serial.print("VENTILADOR: ");
+  Serial.print(ventilador_ligado ? "LIGADO     " : "DESLIGADO  ");
+  Serial.print(" | ");
+  
+  Serial.print("ALARME: ");
+  Serial.print(alarme_ativo ? "ATIVO   " : "INATIVO ");
   
   if (temperatura_atual >= TEMP_ALARME && temperatura_atual < TEMP_CRITICA) {
-    Serial.print(" *** ALARME ***");
+    Serial.print(" *** ALERTA TEMPERATURA ***");
   }
   
   Serial.println();
+  Serial.println("------------------------------------------------");
 }
 
 // ========== LOOP PRINCIPAL ==========
