@@ -74,12 +74,13 @@ window.FornoCharts = {
             annotations: [{
                 text: 'FORNO INDUSTRIAL',
                 x: 0.5,
-                y: 0.1,
+                y: -0.015,
+                xref: 'paper',
+                yref: 'paper',
                 showarrow: false,
                 font: { 
                     color: '#607d8b', 
-                    size: 12, 
-                    family: 'Orbitron' 
+                    size: 11
                 }
             }]
         };
@@ -95,12 +96,38 @@ window.FornoCharts = {
 
     // Atualizar Gauge
     updateTemperatureGauge: function(elementId, temperature, setpoint) {
-        if (document.getElementById(elementId)) {
-            Plotly.restyle(elementId, {
-                value: [temperature],
+        const element = document.getElementById(elementId);
+        if (!element) {
+            console.warn(`⚠️ Elemento ${elementId} não encontrado, inicializando gauge...`);
+            this.initTemperatureGauge(elementId, temperature, setpoint);
+            return;
+        }
+
+        // Verificar se o Plotly foi inicializado no elemento
+        if (!element.data || !Array.isArray(element.data) || element.data.length === 0) {
+            console.warn(`⚠️ Dados do Plotly não encontrados em ${elementId}, reinicializando...`);
+            this.initTemperatureGauge(elementId, temperature, setpoint);
+            return;
+        }
+
+        try {
+            // Verificar se o element tem dados válidos para Plotly
+            if (!element.data || !Array.isArray(element.data) || element.data.length === 0 || !element.data[0]) {
+                console.warn(`⚠️ Dados do elemento inválidos, reinicializando gauge...`);
+                this.initTemperatureGauge(elementId, temperature, setpoint);
+                return;
+            }
+
+            Plotly.restyle(element, {
+                'value': [temperature],
                 'delta.reference': [setpoint],
-                'gauge.bar.color': [this.getGaugeColor(temperature)]
-            });
+                'gauge.bar.color': [this.getGaugeColor(temperature)],
+                'title.text': [`<span style="color: #00d4ff; font-family: Orbitron; font-size: 18px;">Temperatura Atual</span><br><span style="color: #b0bec5; font-size: 14px;">Setpoint: ${setpoint}°C</span>`]
+            }, [0]);
+        } catch (error) {
+            console.error('❌ Erro ao atualizar gauge:', error);
+            // Se falhar, reinicializar o gauge
+            this.initTemperatureGauge(elementId, temperature, setpoint);
         }
     },
 
@@ -232,16 +259,29 @@ window.FornoCharts = {
 
     // Atualizar gráfico de tendência
     updateTrendChart: function(elementId, timestamp, temperature, setpoint, alarmTemp, criticalTemp) {
-        if (!document.getElementById(elementId)) {
+        const element = document.getElementById(elementId);
+        if (!element) {
             this.initTrendChart(elementId);
+            return; // Aguarda próxima chamada após inicialização
         }
 
-        const time = new Date(timestamp);
-        
-        Plotly.extendTraces(elementId, {
-            x: [[time], [time], [time], [time]],
-            y: [[temperature], [setpoint], [alarmTemp], [criticalTemp]]
-        }, [0, 1, 2, 3]);
+        // Verifica se o gráfico tem dados válidos
+        if (!element.data || !Array.isArray(element.data) || element.data.length === 0) {
+            console.log('⚠️ Trend chart não inicializado adequadamente, pulando atualização');
+            return;
+        }
+
+        try {
+            const time = new Date(timestamp);
+            
+            Plotly.extendTraces(elementId, {
+                x: [[time], [time], [time], [time]],
+                y: [[temperature], [setpoint], [alarmTemp], [criticalTemp]]
+            }, [0, 1, 2, 3]);
+        } catch (error) {
+            console.error('❌ Erro ao atualizar trend chart:', error);
+            return;
+        }
 
         // Manter apenas últimos 100 pontos
         const currentData = document.getElementById(elementId).data;
@@ -325,7 +365,13 @@ window.FornoCharts = {
         const values = Object.values(stateDistribution);
         const colors = states.map(state => this.getStateColor(state));
 
-        Plotly.restyle(elementId, {
+        const element = document.getElementById(elementId);
+        if (!element || !element.data || !element.data.length) {
+            console.warn(`⚠️ Elemento ${elementId} não encontrado ou sem dados para pie chart`);
+            return;
+        }
+
+        Plotly.restyle(element, {
             values: [values],
             labels: [states],
             'marker.colors': [colors]
@@ -418,7 +464,21 @@ window.updateTemperatureGauge = function(elementId, temperature, setpoint) {
         console.error('❌ Plotly não está carregado para atualização do gauge');
         return;
     }
-    window.FornoCharts.updateTemperatureGauge(elementId, temperature, setpoint);
+    
+    if (!window.FornoCharts) {
+        console.error('❌ FornoCharts não está inicializado');
+        return;
+    }
+    
+    try {
+        console.log(`🔄 Atualizando gauge: ${elementId}, Temp: ${temperature}°C, Setpoint: ${setpoint}°C`);
+        window.FornoCharts.updateTemperatureGauge(elementId, temperature, setpoint);
+    } catch (error) {
+        console.error('❌ Erro ao atualizar gráficos:', error);
+        // Tentar reinicializar em caso de erro
+        console.log('🔄 Tentando reinicializar gauge...');
+        window.FornoCharts.initTemperatureGauge(elementId, temperature, setpoint);
+    }
 };
 
 window.initTrendChart = function(elementId) {
