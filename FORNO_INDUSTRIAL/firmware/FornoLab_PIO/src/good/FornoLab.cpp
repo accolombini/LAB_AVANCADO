@@ -20,11 +20,19 @@ const float PERDA_AMBIENTE = 2.0;        // °C por ciclo (perdas naturais)
 
 // ========== VARIÁVEIS GLOBAIS ==========
 float temperatura_atual = 1400.0;        // Inicia abaixo do setpoint para forçar aquecimento
+float setpoint_temperatura = TEMP_SETPOINT; // Setpoint configurável via serial
 bool sistema_ativo = true;
 bool alarme_ativo = false;
 bool interrupcao_critica = false;
 bool macarico_ligado = false;
 bool ventilador_ligado = false;
+
+// ========== VARIÁVEIS DE COMUNICAÇÃO SERIAL ==========
+String comando_recebido = "";
+bool comando_completo = false;
+
+// ========== DECLARAÇÃO DE FUNÇÕES ==========
+void processar_comando(String comando);
 
 // ========== CONFIGURAÇÃO INICIAL ==========
 void setup() {
@@ -45,6 +53,10 @@ void setup() {
   Serial.println("Regime: 1500C");
   Serial.println("Alarme: 1600C");
   Serial.println("Interrupcao: 1750C");
+  Serial.println("Comandos via Serial:");
+  Serial.println("  SET_TEMP=1550  - Alterar setpoint");
+  Serial.println("  EMERGENCY_STOP - Parada de emergencia");
+  Serial.println("  RESET_SYSTEM   - Reset do sistema");
   Serial.println("Sistema iniciado!");
   Serial.println();
 }
@@ -63,13 +75,13 @@ void verificar_temperatura_critica() {
   }
   
   // RESETAR INTERRUPÇÃO quando temperatura voltar ao setpoint
-  if (interrupcao_critica && temperatura_atual <= TEMP_SETPOINT) {
+  if (interrupcao_critica && temperatura_atual <= setpoint_temperatura) {
     interrupcao_critica = false;
     sistema_ativo = true;
     alarme_ativo = false; // Reset do alarme também
     
     Serial.println();
-    Serial.println("*** SISTEMA REATIVADO - TEMP <= 1500C ***");
+    Serial.println("*** SISTEMA REATIVADO - TEMP <= " + String(setpoint_temperatura, 0) + "C ***");
     Serial.println("*** REINICIANDO CICLO DE AQUECIMENTO ***");
     Serial.println();
   }
@@ -81,11 +93,11 @@ void verificar_temperatura_critica() {
     Serial.println("*** ALARME! TEMPERATURA CRITICA >= 1600C ***");
   }
   
-  // Desligar alarme quando temperatura retorna ao setpoint (1500°C)
-  if (!interrupcao_critica && temperatura_atual <= TEMP_SETPOINT && alarme_ativo) {
+  // Desligar alarme quando temperatura retorna ao setpoint
+  if (!interrupcao_critica && temperatura_atual <= setpoint_temperatura && alarme_ativo) {
     alarme_ativo = false;
     digitalWrite(PIN_ALARME, LOW);
-    Serial.println("*** ALARME DESLIGADO - TEMP <= 1500C ***");
+    Serial.println("*** ALARME DESLIGADO - TEMP <= " + String(setpoint_temperatura, 0) + "C ***");
   }
   
   // Manter alarme ligado durante interrupção crítica
@@ -94,6 +106,65 @@ void verificar_temperatura_critica() {
   } else {
     // Controlar LED do alarme baseado no estado do alarme_ativo
     digitalWrite(PIN_ALARME, alarme_ativo ? HIGH : LOW);
+  }
+}
+
+// ========== PROCESSAMENTO DE COMANDOS SERIAIS ==========
+void processar_comandos_seriais() {
+  // Lê dados da serial se disponível
+  while (Serial.available() > 0) {
+    char caractere = Serial.read();
+    
+    if (caractere == '\n' || caractere == '\r') {
+      if (comando_recebido.length() > 0) {
+        comando_completo = true;
+      }
+    } else {
+      comando_recebido += caractere;
+    }
+  }
+  
+  // Processa comando quando completo
+  if (comando_completo) {
+    comando_recebido.trim(); // Remove espaços
+    processar_comando(comando_recebido);
+    comando_recebido = "";
+    comando_completo = false;
+  }
+}
+
+void processar_comando(String comando) {
+  Serial.println(">>> COMANDO RECEBIDO: " + comando);
+  
+  if (comando.startsWith("SET_TEMP=")) {
+    // Extrair temperatura do comando SET_TEMP=1550
+    String temp_str = comando.substring(9); // Remove "SET_TEMP="
+    float nova_temperatura = temp_str.toFloat();
+    
+    if (nova_temperatura >= TEMP_MINIMA && nova_temperatura <= TEMP_MAXIMA) {
+      setpoint_temperatura = nova_temperatura;
+      Serial.println(">>> SETPOINT ALTERADO PARA: " + String(setpoint_temperatura, 0) + "C");
+    } else {
+      Serial.println(">>> ERRO: Temperatura fora dos limites (1000-1800C)");
+    }
+  }
+  else if (comando == "EMERGENCY_STOP") {
+    interrupcao_critica = true;
+    sistema_ativo = false;
+    Serial.println(">>> PARADA DE EMERGENCIA ATIVADA!");
+    Serial.println(">>> SISTEMA DESLIGADO - VENTILADOR FORCADO");
+  }
+  else if (comando == "RESET_SYSTEM") {
+    interrupcao_critica = false;
+    sistema_ativo = true;
+    alarme_ativo = false;
+    setpoint_temperatura = TEMP_SETPOINT; // Volta ao setpoint original
+    Serial.println(">>> SISTEMA RESETADO!");
+    Serial.println(">>> SETPOINT RESTAURADO: " + String(setpoint_temperatura, 0) + "C");
+  }
+  else {
+    Serial.println(">>> COMANDO DESCONHECIDO: " + comando);
+    Serial.println(">>> Comandos validos: SET_TEMP=valor, EMERGENCY_STOP, RESET_SYSTEM");
   }
 }
 
@@ -161,7 +232,7 @@ void exibir_status() {
   Serial.print("TEMP: ");
   Serial.print(temperatura_atual, 1);
   Serial.print("C | SP: ");
-  Serial.print(TEMP_SETPOINT, 0);
+  Serial.print(setpoint_temperatura, 0);
   Serial.print("C | ");
   
   if (interrupcao_critica) {
@@ -197,18 +268,21 @@ void exibir_status() {
 
 // ========== LOOP PRINCIPAL ==========
 void loop() {
-  // 1. Verificar temperatura crítica (PRIORIDADE MÁXIMA)
+  // 1. Processar comandos recebidos via Serial
+  processar_comandos_seriais();
+  
+  // 2. Verificar temperatura crítica (PRIORIDADE MÁXIMA)
   verificar_temperatura_critica();
   
-  // 2. Controlar temperatura (SEMPRE - independente do sistema_ativo)
+  // 3. Controlar temperatura (SEMPRE - independente do sistema_ativo)
   controlar_temperatura();
   
-  // 3. Simular planta térmica
+  // 4. Simular planta térmica
   simular_temperatura();
   
-  // 4. Exibir status
+  // 5. Exibir status
   exibir_status();
   
-  // 5. Aguardar próximo ciclo
+  // 6. Aguardar próximo ciclo
   delay(1000); // 1 segundo por ciclo
 }

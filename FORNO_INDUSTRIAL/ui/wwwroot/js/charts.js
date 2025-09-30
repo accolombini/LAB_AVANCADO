@@ -405,37 +405,80 @@ window.ScadaEffects = {
 
 // Funções globais para serem chamadas do Blazor
 window.initTemperatureGauge = function(elementId, temperature, setpoint) {
+    if (typeof Plotly === 'undefined') {
+        console.error('❌ Plotly não está carregado');
+        return;
+    }
+    console.log('✅ Inicializando gauge de temperatura');
     window.FornoCharts.initTemperatureGauge(elementId, temperature, setpoint);
 };
 
 window.updateTemperatureGauge = function(elementId, temperature, setpoint) {
+    if (typeof Plotly === 'undefined') {
+        console.error('❌ Plotly não está carregado para atualização do gauge');
+        return;
+    }
     window.FornoCharts.updateTemperatureGauge(elementId, temperature, setpoint);
 };
 
 window.initTrendChart = function(elementId) {
+    if (typeof Plotly === 'undefined') {
+        console.error('❌ Plotly não está carregado');
+        return;
+    }
+    console.log('✅ Inicializando gráfico de tendência');
     window.FornoCharts.initTrendChart(elementId);
 };
 
 window.updateTrendChart = function(elementId, timestamp, temperature, setpoint, alarmTemp, criticalTemp) {
+    if (typeof Plotly === 'undefined') {
+        console.error('❌ Plotly não está carregado para atualização do gráfico');
+        return;
+    }
     window.FornoCharts.updateTrendChart(elementId, timestamp, temperature, setpoint, alarmTemp, criticalTemp);
 };
 
 window.initStatusPieChart = function(elementId) {
+    if (typeof Plotly === 'undefined') {
+        console.error('❌ Plotly não está carregado');
+        return;
+    }
+    console.log('✅ Inicializando gráfico circular');
     window.FornoCharts.initStatusPieChart(elementId);
 };
 
 window.updateStatusPieChart = function(elementId, stateDistribution) {
+    if (typeof Plotly === 'undefined') {
+        console.error('❌ Plotly não está carregado para atualização do gráfico circular');
+        return;
+    }
     window.FornoCharts.updateStatusPieChart(elementId, stateDistribution);
 };
 
 // Auto-inicialização e responsividade
 document.addEventListener('DOMContentLoaded', function() {
-    // Redimensionar gráficos quando a janela muda de tamanho
-    window.addEventListener('resize', function() {
-        setTimeout(() => {
-            window.FornoCharts.resizeCharts();
-        }, 100);
-    });
+    console.log('📊 Charts.js carregado');
+    
+    // Verificar se Plotly está disponível
+    function checkPlotlyLoaded() {
+        if (typeof Plotly !== 'undefined') {
+            console.log('✅ Plotly detectado e pronto');
+            
+            // Redimensionar gráficos quando a janela muda de tamanho
+            window.addEventListener('resize', function() {
+                setTimeout(() => {
+                    if (window.FornoCharts) {
+                        window.FornoCharts.resizeCharts();
+                    }
+                }, 100);
+            });
+        } else {
+            console.log('⏳ Aguardando Plotly carregar...');
+            setTimeout(checkPlotlyLoaded, 500);
+        }
+    }
+    
+    checkPlotlyLoaded();
 });
 
 // Limpar recursos quando a página é descarregada

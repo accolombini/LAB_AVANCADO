@@ -62,13 +62,11 @@ public sealed class SimulatedDevice : IDevice
     {
         var cmd = command.Trim().ToUpperInvariant();
         
-        Console.WriteLine($"📤 Comando recebido: {command}");
-        
         return cmd switch
         {
             "GET_STATUS" => Task.FromResult("SIMULADOR_ATIVO"),
             "RESET_SYSTEM" => ResetSystem(),
-            "SET_TEMP" when command.Contains("=") => SetTemperature(command),
+            var c when c.StartsWith("SET_TEMP=") => SetTemperature(command),
             "EMERGENCY_STOP" => EmergencyStop(),
             _ => Task.FromResult("OK")
         };
@@ -306,8 +304,9 @@ public sealed class SimulatedDevice : IDevice
             var parts = command.Split('=');
             if (parts.Length == 2 && double.TryParse(parts[1], out double temp))
             {
+                var oldSetpoint = _setpoint;
                 _setpoint = Math.Clamp(temp, 1000.0, 1800.0);
-                Console.WriteLine($"🎯 Setpoint alterado para: {_setpoint:F1}°C");
+                Console.WriteLine($"🎯 Setpoint alterado de {oldSetpoint:F1}°C para: {_setpoint:F1}°C");
                 return Task.FromResult("SETPOINT_OK");
             }
         }

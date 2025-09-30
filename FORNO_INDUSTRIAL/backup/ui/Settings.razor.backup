@@ -14,83 +14,43 @@
                 <h4><i class="fas fa-thermometer-full"></i> Limites de Temperatura</h4>
             </div>
             <div class="card-body">
-                @if (_isLoading)
+                @if (_currentTelemetry != null)
                 {
-                    <div class="text-center">
-                        <div class="spinner-border text-primary" role="status"></div>
-                        <p class="mt-2">Carregando configurações...</p>
-                    </div>
-                }
-                else
-                {
-                    <!-- Validação em tempo real -->
-                    @if (_validationResult != null)
-                    {
-                        <div class="alert @(_validationResult.Valid ? "alert-success" : "alert-danger") mb-3">
-                            <strong>@_validationResult.Message</strong>
-                            @if (_validationResult.Errors.Any())
-                            {
-                                <ul class="mb-0 mt-2">
-                                    @foreach (var error in _validationResult.Errors)
-                                    {
-                                        <li>@error</li>
-                                    }
-                                </ul>
-                            }
-                        </div>
-                    }
-
-                    <div class="mb-3">
-                        <label class="form-label">Temperatura Mínima (°C):</label>
-                        <input type="number" class="form-control" 
-                               @bind="_tempMinima" @oninput="ValidateSettingsInRealTime"
-                               min="500" max="1200" step="10" />
-                        <div class="form-text">Atual: @(_currentConfig?.FornoIndustrial.TemperaturaMinima ?? 0)°C</div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Temperatura Máxima (°C):</label>
-                        <input type="number" class="form-control" 
-                               @bind="_tempMaxima" @oninput="ValidateSettingsInRealTime"
-                               min="1500" max="2000" step="10" />
-                        <div class="form-text">Atual: @(_currentConfig?.FornoIndustrial.TemperaturaMaxima ?? 0)°C</div>
-                    </div>
-
                     <div class="mb-3">
                         <label class="form-label">Setpoint Operacional (°C):</label>
                         <input type="number" class="form-control" 
-                               @bind="_tempSetpoint" @oninput="ValidateSettingsInRealTime"
-                               min="@_tempMinima" max="@_tempMaxima" step="10" />
-                        <div class="form-text">Atual: @(_currentTelemetry?.SetPoint ?? 0)°C</div>
+                               @bind="_tempSetpoint" 
+                               min="1000" max="1800" step="10" />
+                        <div class="form-text">Atual: @_currentTelemetry.SetPoint°C</div>
                     </div>
 
                     <div class="mb-3">
                         <label class="form-label">Limite de Alarme (°C):</label>
                         <input type="number" class="form-control" 
-                               @bind="_tempAlarme" @oninput="ValidateSettingsInRealTime"
-                               min="@_tempSetpoint" max="@_tempCritica" step="10" />
-                        <div class="form-text">Atual: @(_currentTelemetry?.TemperaturaAlarme ?? 0)°C</div>
+                               @bind="_tempAlarme" 
+                               min="1000" max="1900" step="10" />
+                        <div class="form-text">Atual: @_currentTelemetry.TemperaturaAlarme°C</div>
                     </div>
 
                     <div class="mb-3">
                         <label class="form-label">Limite Crítico (°C):</label>
                         <input type="number" class="form-control" 
-                               @bind="_tempCritica" @oninput="ValidateSettingsInRealTime"
-                               min="@_tempAlarme" max="2000" step="10" />
-                        <div class="form-text">Atual: @(_currentTelemetry?.TemperaturaCritica ?? 0)°C</div>
+                               @bind="_tempCritica" 
+                               min="1000" max="2000" step="10" />
+                        <div class="form-text">Atual: @_currentTelemetry.TemperaturaCritica°C</div>
                     </div>
 
                     <div class="d-grid gap-2">
-                        <button class="btn btn-primary" 
-                                @onclick="ApplyTemperatureSettings"
-                                disabled="@(_isSaving || _validationResult?.Valid == false)">
-                            @if (_isSaving)
-                            {
-                                <span class="spinner-border spinner-border-sm me-2"></span>
-                            }
-                            <i class="fas fa-save"></i> 
-                            @(_isSaving ? "Aplicando..." : "Aplicar Configurações")
+                        <button class="btn btn-primary" @onclick="ApplyTemperatureSettings">
+                            <i class="fas fa-save"></i> Aplicar Configurações
                         </button>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-2">Carregando configurações...</p>
                     </div>
                 }
             </div>
@@ -119,36 +79,6 @@
                     <button class="btn btn-outline-info" @onclick="ReconnectSignalR">
                         <i class="fas fa-sync-alt"></i> Reconectar SignalR
                     </button>
-                </div>
-
-                <!-- Configurações de Hardware -->
-                <div class="mb-4">
-                    <h6><i class="fas fa-microchip"></i> Hardware</h6>
-                    
-                    <div class="form-check form-switch mb-3">
-                        <input class="form-check-input" type="checkbox" 
-                               @bind="_useSimulator" @bind:after="ValidateSettingsInRealTime"
-                               id="useSimulator">
-                        <label class="form-check-label" for="useSimulator">
-                            Usar simulador (desmarque para Arduino real)
-                        </label>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Porta Serial:</label>
-                        <input type="text" class="form-control" 
-                               @bind="_serialPort" @oninput="ValidateSettingsInRealTime"
-                               placeholder="/dev/tty.usbmodem1101" />
-                        <div class="form-text">Atual: @(_currentConfig?.SerialPort ?? "N/A")</div>
-                    </div>
-                    
-                    @if (!_useSimulator)
-                    {
-                        <div class="alert alert-warning">
-                            <small><i class="fas fa-exclamation-triangle"></i> 
-                            Reinicie a API após alterar configurações de hardware</small>
-                        </div>
-                    }
                 </div>
 
                 <!-- Configurações de Segurança -->
@@ -257,26 +187,18 @@
 
 @code {
     private Telemetry? _currentTelemetry;
-    private FornoConfiguration? _currentConfig;
     private bool _isConnected = false;
     private DateTime _systemStartTime = DateTime.Now;
-    private bool _isLoading = true;
-    private bool _isSaving = false;
-    private ValidationResult? _validationResult;
 
     // Configurações temporárias para edição
     private double _tempSetpoint = 1500;
     private double _tempAlarme = 1700;
     private double _tempCritica = 1800;
-    private double _tempMinima = 1000;
-    private double _tempMaxima = 1800;
-    private string _apiUrl = "http://localhost:5002";
+    private string _apiUrl = "http://localhost:5000";
     private bool _enableAutoShutdown = true;
     private bool _enableAlarmNotifications = true;
     private int _manualHeaterPWM = 0;
     private int _manualFanPWM = 0;
-    private bool _useSimulator = true;
-    private string _serialPort = "/dev/tty.usbmodem1101";
 
     protected override async Task OnInitializedAsync()
     {
@@ -290,37 +212,13 @@
             await SignalRService.StartAsync();
         }
         
-        // Carregar configurações atuais da API
-        await LoadConfigurationsAsync();
-        
-        // Tentar obter dados iniciais de telemetria
+        // Tentar obter dados iniciais
         _currentTelemetry = await ApiService.GetTelemetryAsync();
-        
-        _isLoading = false;
-        StateHasChanged();
-    }
-
-    private async Task LoadConfigurationsAsync()
-    {
-        try
+        if (_currentTelemetry != null)
         {
-            _currentConfig = await ApiService.GetConfigAsync();
-            if (_currentConfig != null)
-            {
-                // Atualizar campos do formulário com configurações reais
-                _tempMinima = _currentConfig.FornoIndustrial.TemperaturaMinima;
-                _tempMaxima = _currentConfig.FornoIndustrial.TemperaturaMaxima;
-                _tempSetpoint = _currentConfig.FornoIndustrial.TemperaturaSetpoint;
-                _tempAlarme = _currentConfig.FornoIndustrial.TemperaturaAlarme;
-                _tempCritica = _currentConfig.FornoIndustrial.TemperaturaCritica;
-                _useSimulator = _currentConfig.UseSimulator;
-                _serialPort = _currentConfig.SerialPort;
-            }
-        }
-        catch (Exception ex)
-        {
-            // Log do erro, mas continua com valores padrão
-            Console.WriteLine($"Erro ao carregar configurações: {ex.Message}");
+            _tempSetpoint = _currentTelemetry.SetPoint;
+            _tempAlarme = _currentTelemetry.TemperaturaAlarme;
+            _tempCritica = _currentTelemetry.TemperaturaCritica;
         }
     }
 
@@ -338,97 +236,10 @@
 
     private async Task ApplyTemperatureSettings()
     {
-        _isSaving = true;
-        _validationResult = null;
-        StateHasChanged();
-
-        try
-        {
-            // Criar configuração com novos valores
-            var newConfig = new FornoConfiguration
-            {
-                UseSimulator = _useSimulator,
-                SerialPort = _serialPort,
-                FornoIndustrial = new FornoIndustrialSettings
-                {
-                    TemperaturaMinima = _tempMinima,
-                    TemperaturaMaxima = _tempMaxima,
-                    TemperaturaSetpoint = _tempSetpoint,
-                    TemperaturaAlarme = _tempAlarme,
-                    TemperaturaCritica = _tempCritica
-                }
-            };
-
-            // Validar primeiro
-            _validationResult = await ApiService.ValidateConfigAsync(newConfig);
-            
-            if (_validationResult?.Valid == true)
-            {
-                // Se válido, aplicar
-                var success = await ApiService.UpdateConfigAsync(newConfig);
-                if (success)
-                {
-                    _currentConfig = newConfig;
-                    _validationResult.Message = "✅ Configurações aplicadas com sucesso!";
-                    
-                    // Atualizar setpoint imediatamente se mudou
-                    if (_currentTelemetry?.SetPoint != _tempSetpoint)
-                    {
-                        await ApiService.SetTemperatureAsync(_tempSetpoint);
-                    }
-                }
-                else
-                {
-                    _validationResult = new ValidationResult 
-                    { 
-                        Valid = false, 
-                        Message = "❌ Erro ao aplicar configurações" 
-                    };
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _validationResult = new ValidationResult 
-            { 
-                Valid = false, 
-                Message = $"❌ Erro: {ex.Message}" 
-            };
-        }
-        finally
-        {
-            _isSaving = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task ValidateSettingsInRealTime()
-    {
-        if (_currentConfig == null) return;
-
-        try
-        {
-            var configToValidate = new FornoConfiguration
-            {
-                UseSimulator = _useSimulator,
-                SerialPort = _serialPort,
-                FornoIndustrial = new FornoIndustrialSettings
-                {
-                    TemperaturaMinima = _tempMinima,
-                    TemperaturaMaxima = _tempMaxima,
-                    TemperaturaSetpoint = _tempSetpoint,
-                    TemperaturaAlarme = _tempAlarme,
-                    TemperaturaCritica = _tempCritica
-                }
-            };
-
-            _validationResult = await ApiService.ValidateConfigAsync(configToValidate);
-            StateHasChanged();
-        }
-        catch (Exception)
-        {
-            // Ignora erros de validação em tempo real
-        }
+        // Aqui você aplicaria as configurações via API
+        // Por enquanto, apenas simulamos
+        await ApiService.SetTemperatureAsync(_tempSetpoint);
+        // Adicionar calls para configurar limites de alarme se disponível na API
     }
 
     private async Task ReconnectSignalR()
@@ -452,11 +263,8 @@
 
     private string GetTemperatureClass(double temp)
     {
-        if (_currentConfig?.FornoIndustrial != null)
-        {
-            if (temp >= _currentConfig.FornoIndustrial.TemperaturaCritica) return "text-danger fw-bold";
-            if (temp >= _currentConfig.FornoIndustrial.TemperaturaAlarme) return "text-warning fw-bold";
-        }
+        if (temp >= AlarmThresholds.TEMP_CRITICA) return "text-danger fw-bold";
+        if (temp >= AlarmThresholds.TEMP_ALARME) return "text-warning fw-bold";
         return "text-success";
     }
 
