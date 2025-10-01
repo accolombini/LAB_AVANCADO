@@ -1,19 +1,12 @@
 {
-  "folders": [
-    { "name": "Forno Industrial (repo)", "path": "." },
-  
-  ],
-  "settings": {
-
-    // Terminal abre sempre na raiz do repo
-    "terminal.integrated.cwd": "${workspaceFolder:Forno Industrial (repo)}",
-
-  },
-  "extensions": {
-    "recommendations": [
-      "platformio.platformio-ide",
-      "ms-vscode.cpptools",
-      "ms-dotnettools.csharp"
-    ]
-  }
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "FornoLab_PIO",
+			"path": "firmware/FornoLab_PIO"
+		}
+	],
+	"settings": {}
 }

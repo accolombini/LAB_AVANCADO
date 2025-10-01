@@ -322,8 +322,6 @@ else
     {
         if (firstRender)
         {
-            // Aguardar um pouco para garantir que Plotly carregou
-            await Task.Delay(500);
             await InitializeCharts();
         }
     }
@@ -332,41 +330,24 @@ else
     {
         try
         {
-            // Verificar se Plotly está disponível
-            var plotlyLoaded = await JSRuntime.InvokeAsync<bool>("eval", "typeof Plotly !== 'undefined'");
-            if (!plotlyLoaded)
+            // Inicializar gauge de temperatura
+            if (_currentTelemetry != null)
             {
-                // Tentar novamente após um delay
-                await Task.Delay(1000);
-                plotlyLoaded = await JSRuntime.InvokeAsync<bool>("eval", "typeof Plotly !== 'undefined'");
+                await JSRuntime.InvokeVoidAsync("initTemperatureGauge", 
+                    "temperature-gauge", 
+                    _currentTelemetry.TemperaturaAtual, 
+                    _currentTelemetry.SetPoint);
             }
-
-            if (plotlyLoaded)
-            {
-                // Inicializar gauge de temperatura
-                if (_currentTelemetry != null)
-                {
-                    await JSRuntime.InvokeVoidAsync("initTemperatureGauge", 
-                        "temperature-gauge", 
-                        _currentTelemetry.TemperaturaAtual, 
-                        _currentTelemetry.SetPoint);
-                }
-                
-                // Inicializar gráfico de tendência
-                await JSRuntime.InvokeVoidAsync("initTrendChart", "temperature-trend-chart");
-                
-                // Inicializar gráfico circular
-                await JSRuntime.InvokeVoidAsync("initStatusPieChart", "status-pie-chart");
-            }
-            else
-            {
-                // Log do problema
-                Console.WriteLine("❌ Plotly não carregado - gráficos não inicializados");
-            }
+            
+            // Inicializar gráfico de tendência
+            await JSRuntime.InvokeVoidAsync("initTrendChart", "temperature-trend-chart");
+            
+            // Inicializar gráfico circular
+            await JSRuntime.InvokeVoidAsync("initStatusPieChart", "status-pie-chart");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"❌ Erro ao inicializar gráficos: {ex.Message}");
+            // Ignorar erros de JavaScript durante desenvolvimento
         }
     }
 
@@ -384,14 +365,6 @@ else
     {
         try
         {
-            // Verificar se Plotly está disponível
-            var plotlyLoaded = await JSRuntime.InvokeAsync<bool>("eval", "typeof Plotly !== 'undefined'");
-            if (!plotlyLoaded)
-            {
-                Console.WriteLine("❌ Plotly não disponível para atualização dos gráficos");
-                return;
-            }
-
             // Atualizar gauge
             await JSRuntime.InvokeVoidAsync("updateTemperatureGauge",
                 "temperature-gauge",
@@ -412,9 +385,9 @@ else
                 "status-pie-chart",
                 GetStateDistribution());
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"❌ Erro ao atualizar gráficos: {ex.Message}");
+            // Ignorar erros de JavaScript
         }
     }
 
