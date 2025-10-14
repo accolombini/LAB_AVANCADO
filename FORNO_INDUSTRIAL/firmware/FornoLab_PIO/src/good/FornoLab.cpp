@@ -228,42 +228,41 @@ void simular_temperatura() {
 
 // ========== EXIBIR STATUS ==========
 void exibir_status() {
-  // Linha 1: Temperatura e status do sistema
-  Serial.print("TEMP: ");
+  Serial.println("================================================");
+  
+  // Linha 1: Temperatura principal
+  Serial.print("🌡️  TEMPERATURA: ");
   Serial.print(temperatura_atual, 1);
-  Serial.print("C | SP: ");
+  Serial.print("°C  |  🎯 SETPOINT: ");
   Serial.print(setpoint_temperatura, 0);
-  Serial.print("C | ");
+  Serial.println("°C");
   
+  // Linha 2: Estado do sistema
+  Serial.print("📊 ESTADO: ");
   if (interrupcao_critica) {
-    Serial.print("*** INTERRUPCAO CRITICA ***");
+    Serial.println("🚨 INTERRUPCAO CRITICA");
   } else if (macarico_ligado) {
-    Serial.print("AQUECENDO (+5C)");
+    Serial.println("🔥 AQUECENDO (+5°C)");
   } else if (ventilador_ligado) {
-    Serial.print("RESFRIANDO (-8C)");
+    Serial.println("❄️  RESFRIANDO (-8°C)");
   } else {
-    Serial.print("MANTENDO (-1C)");
+    Serial.println("⚖️  MANTENDO (-1°C)");
   }
-  Serial.println();
   
-  // Linha 2: Status dos componentes com espaçamento adequado
-  Serial.print("MACARICO: ");
-  Serial.print(macarico_ligado ? "LIGADO     " : "DESLIGADO  ");
-  Serial.print(" | ");
+  // Linha 3: Status dos equipamentos
+  Serial.print("🔴 MAÇARICO: ");
+  Serial.print(macarico_ligado ? "LIGADO   " : "DESLIGADO");
+  Serial.print("  |  🔵 VENTILADOR: ");
+  Serial.print(ventilador_ligado ? "LIGADO   " : "DESLIGADO");
+  Serial.print("  |  🟡 ALARME: ");
+  Serial.println(alarme_ativo ? "ATIVO" : "INATIVO");
   
-  Serial.print("VENTILADOR: ");
-  Serial.print(ventilador_ligado ? "LIGADO     " : "DESLIGADO  ");
-  Serial.print(" | ");
-  
-  Serial.print("ALARME: ");
-  Serial.print(alarme_ativo ? "ATIVO   " : "INATIVO ");
-  
+  // Linha 4: Alertas se houver
   if (temperatura_atual >= TEMP_ALARME && temperatura_atual < TEMP_CRITICA) {
-    Serial.print(" *** ALERTA TEMPERATURA ***");
+    Serial.println("⚠️  *** ALERTA: TEMPERATURA ELEVADA ***");
   }
   
-  Serial.println();
-  Serial.println("------------------------------------------------");
+  Serial.println("================================================");
 }
 
 // ========== LOOP PRINCIPAL ==========

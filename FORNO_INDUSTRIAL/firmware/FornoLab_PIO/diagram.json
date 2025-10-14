@@ -6,14 +6,20 @@
     { "type": "wokwi-arduino-uno", "id": "uno", "top": 0, "left": 0, "attrs": {} },
     { "type": "wokwi-led", "id": "led_macarico", "top": -67.2, "left": 200.4, "attrs": { "color": "red", "label": "MAÇARICO" } },
     { "type": "wokwi-led", "id": "led_ventilador", "top": -67.2, "left": 300.4, "attrs": { "color": "blue", "label": "VENTILADOR" } },
-    { "type": "wokwi-led", "id": "led_alarme", "top": -67.2, "left": 400.4, "attrs": { "color": "yellow", "label": "ALARME" } }
+    { "type": "wokwi-led", "id": "led_alarme", "top": -67.2, "left": 400.4, "attrs": { "color": "yellow", "label": "ALARME" } },
+    { "type": "wokwi-resistor", "id": "r_macarico", "top": -9.6, "left": 172.8, "attrs": { "value": "330" } },
+    { "type": "wokwi-resistor", "id": "r_ventilador", "top": -9.6, "left": 272.8, "attrs": { "value": "330" } },
+    { "type": "wokwi-resistor", "id": "r_alarme", "top": -9.6, "left": 372.8, "attrs": { "value": "330" } }
   ],
   "connections": [
-    [ "uno:5", "led_macarico:A", "red", [] ],
+    [ "uno:5", "r_macarico:1", "red", [] ],
+    [ "r_macarico:2", "led_macarico:A", "red", [] ],
     [ "led_macarico:C", "uno:GND.2", "black", [] ],
-    [ "uno:6", "led_ventilador:A", "blue", [] ],
+    [ "uno:6", "r_ventilador:1", "blue", [] ],
+    [ "r_ventilador:2", "led_ventilador:A", "blue", [] ],
     [ "led_ventilador:C", "uno:GND.3", "black", [] ],
-    [ "uno:3", "led_alarme:A", "yellow", [] ],
+    [ "uno:3", "r_alarme:1", "yellow", [] ],
+    [ "r_alarme:2", "led_alarme:A", "yellow", [] ],
     [ "led_alarme:C", "uno:GND.4", "black", [] ]
   ],
   "dependencies": {}
